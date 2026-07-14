@@ -73,6 +73,10 @@ all: $(TARGET_LIB) $(TARGET_TEST) $(TARGET_TEST_BACKENDS) $(TARGET_BENCH)
 $(TARGET_LIB): $(OBJ_ALL)
 	ar rcs $@ $^
 
+# Build shared library
+libvek.so: $(OBJ_ALL)
+	$(CC) -shared -o $@ $^ $(LDFLAGS)
+
 # Compile scalar (always)
 $(OBJ_SCALAR): $(SRC_SCALAR) include/vek.h
 	$(CC) $(CFLAGS) -c $< -o $@
@@ -114,14 +118,14 @@ $(TARGET_TEST_BACKENDS): $(TARGET_LIB) $(TEST_BACKENDS_SRC)
 $(TARGET_BENCH): $(TARGET_LIB) $(BENCH_SRC)
 	$(CC) $(CFLAGS) -o $@ $(BENCH_SRC) -L. -lvek $(LDFLAGS)
 
-test: $(TARGET_TEST)
-	./$(TARGET_TEST)
+test: $(TARGET_TEST) libvek.so
+	LD_LIBRARY_PATH=. ./$(TARGET_TEST)
 
-test-backends: $(TARGET_TEST_BACKENDS)
-	./$(TARGET_TEST_BACKENDS)
+test-backends: $(TARGET_TEST_BACKENDS) libvek.so
+	LD_LIBRARY_PATH=. ./$(TARGET_TEST_BACKENDS)
 
-bench: $(TARGET_BENCH)
-	./$(TARGET_BENCH) 10000
+bench: $(TARGET_BENCH) libvek.so
+	LD_LIBRARY_PATH=. ./$(TARGET_BENCH) 10000
 
 clean:
 	rm -f $(OBJ_ALL) $(TARGET_LIB) $(TARGET_TEST) $(TARGET_BENCH)
