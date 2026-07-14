@@ -84,10 +84,8 @@ static void run_random_tests(void)
             a[i] = (float)rand() / RAND_MAX * 20.0f - 10.0f; /* [-10, 10] */
             b[i] = (float)rand() / RAND_MAX * 20.0f - 10.0f;
         }
-
-        float dot = vek_dot_f32(a, b, n);
         float l2sq = vek_l2sq_f32(a, b, n);
-        float cos = vek_cosine_f32(a, b, n);
+                float cos = vek_cosine_f32(a, b, n);
 
         /* Verify cosine is in [-1, 1] */
         if (cos < -1.00001f || cos > 1.00001f) {

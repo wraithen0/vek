@@ -32,6 +32,7 @@ SRC_ARM_NEON = src/arm/neon.c
 
 # Test and bench sources
 TEST_SRC = tests/test_kernels.c
+TEST_BACKENDS_SRC = tests/test_backends.c
 BENCH_SRC = bench/bench_kernels.c
 
 # Object files
@@ -55,14 +56,19 @@ ifeq ($(UNAME_M),aarch64)
     OBJ_ALL += $(OBJ_ARM_NEON)
 endif
 
+# Test backends executable (tests each backend directly)
+TARGET_TEST_BACKENDS = test_backends
+TEST_BACKENDS_SRC = tests/test_backends.c
+
 # Targets
 TARGET_LIB = libvek.a
 TARGET_TEST = test_kernels
+TARGET_TEST_BACKENDS = test_backends
 TARGET_BENCH = bench_kernels
 
-.PHONY: all clean test bench install
+.PHONY: all clean test test-backends bench install
 
-all: $(TARGET_LIB) $(TARGET_TEST) $(TARGET_BENCH)
+all: $(TARGET_LIB) $(TARGET_TEST) $(TARGET_TEST_BACKENDS) $(TARGET_BENCH)
 
 $(TARGET_LIB): $(OBJ_ALL)
 	ar rcs $@ $^
@@ -99,12 +105,20 @@ endif
 $(TARGET_TEST): $(TARGET_LIB) $(TEST_SRC)
 	$(CC) $(CFLAGS) -o $@ $(TEST_SRC) -L. -lvek $(LDFLAGS)
 
+# Test backends executable (tests each backend directly)
+TARGET_TEST_BACKENDS = test_backends
+$(TARGET_TEST_BACKENDS): $(TARGET_LIB) $(TEST_BACKENDS_SRC)
+	$(CC) $(CFLAGS) -o $@ $(TEST_BACKENDS_SRC) -L. -lvek $(LDFLAGS)
+
 # Benchmark executable
 $(TARGET_BENCH): $(TARGET_LIB) $(BENCH_SRC)
 	$(CC) $(CFLAGS) -o $@ $(BENCH_SRC) -L. -lvek $(LDFLAGS)
 
 test: $(TARGET_TEST)
 	./$(TARGET_TEST)
+
+test-backends: $(TARGET_TEST_BACKENDS)
+	./$(TARGET_TEST_BACKENDS)
 
 bench: $(TARGET_BENCH)
 	./$(TARGET_BENCH) 10000

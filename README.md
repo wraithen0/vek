@@ -114,23 +114,23 @@ make bench
 ./bench_kernels 50000
 ```
 
-Example output (AMD Zen 3, AVX2):
+Example output (Intel i5-1135G7 @ 2.4 GHz, AVX-512):
 
 ```
 === Vector size: 1024 ===
   Kernel               ns/iter     cycles   GFLOP/s   result
-  vek_dot_f32           45.2       135.6     45.4     123456.78
-  vek_l2sq_f32          52.1       156.3     39.4     0.250000
-  vek_cosine_f32        89.3       267.9     23.0     0.997000
+  vek_dot_f32           56.8       170.5     36.0     214.74
+  vek_l2sq_f32          61.5       184.4     33.3     429.48
+  vek_cosine_f32        91.7       275.2     22.3     0.600000
 ```
 
 Compare against [faiss](https://github.com/facebookresearch/faiss), [usearch](https://github.com/unum-cloud/usearch), [simsimd](https://github.com/ashvardanian/simsimd).
 
 ## Roadmap
 
-- [x] v0.1 — Scalar reference + tests + CI + dot/L2/cosine f32
+- [x] v0.1 — Scalar reference + tests + dot/L2/cosine f32
 - [x] v0.2 — AVX2 intrinsics, dispatch table, benchmarks
-- [x] v0.3 — NEON intrinsics, CI matrix (x86_64 + ARM64)
+- [ ] v0.3 — NEON intrinsics, CI matrix (x86_64 + ARM64)
 - [ ] v0.4 — AVX-512F intrinsics, hand-tuned `.S` for hottest kernel
 - [ ] v0.5 — int8/uint8 quantized variants (binary embeddings)
 - [ ] v1.0 — Stable API, README benchmarks table, docs

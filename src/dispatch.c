@@ -6,6 +6,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
+#include <pthread.h>
 #include "vek.h"
 
 /* Function pointer types */
@@ -21,6 +22,42 @@ static struct {
     const char*       name;
     int               initialized;
 } g_dispatch = {0};
+
+/* Thread-safe initialization */
+static pthread_once_t g_init_once = PTHREAD_ONCE_INIT;
+
+/* Forward declarations for static functions */
+static void dispatch_init_scalar(void);
+static void dispatch_init_sse2(void);
+static void dispatch_init_avx2(void);
+static void dispatch_init_avx512(void);
+
+static int cpu_has_avx2_runtime(void);
+static int cpu_has_avx512f_runtime(void);
+
+static void dispatch_init(void)
+{
+    /* Default to scalar */
+    dispatch_init_scalar();
+
+#if defined(__x86_64__) || defined(_M_X64)
+    if (cpu_has_avx512f_runtime()) {
+        dispatch_init_avx512();
+    }
+    else if (cpu_has_avx2_runtime()) {
+        dispatch_init_avx2();
+    }
+    else {
+        dispatch_init_sse2();
+    }
+#elif defined(__aarch64__) || defined(_M_ARM64)
+    if (cpu_has_neon()) {
+        dispatch_init_neon();
+    }
+#endif
+
+    g_dispatch.initialized = 1;
+}
 
 /* Forward declarations for backend functions */
 float vek_dot_f32_scalar(const float*, const float*, size_t);
@@ -199,31 +236,7 @@ static void dispatch_init_neon(void)
 
 int vek_init(void)
 {
-    if (g_dispatch.initialized) {
-        return 0;
-    }
-
-    /* Default to scalar */
-    dispatch_init_scalar();
-
-#if defined(__x86_64__) || defined(_M_X64)
-    if (cpu_has_avx512f_runtime()) {
-        dispatch_init_avx512();
-    }
-    else if (cpu_has_avx2_runtime()) {
-        dispatch_init_avx2();
-    }
-    else {
-        dispatch_init_sse2();
-    }
-#elif defined(__aarch64__) || defined(_M_ARM64)
-    if (cpu_has_neon()) {
-        dispatch_init_neon();
-    }
-#endif
-
-    g_dispatch.initialized = 1;
-    return 0;
+    return pthread_once(&g_init_once, dispatch_init);
 }
 
 const char* vek_backend_name(void)
