@@ -1,0 +1,99 @@
+name: vek CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            arch: x86_64
+            target: x86_64
+          - os: ubuntu-latest
+            arch: aarch64
+            target: aarch64
+          - os: macos-latest
+            arch: x86_64
+            target: x86_64
+          - os: macos-latest
+            arch: arm64
+            target: arm64
+          - os: windows-latest
+            arch: x86_64
+            target: x86_64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup GCC (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc make
+
+      - name: Setup Clang (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install llvm
+          echo "/usr/local/opt/llvm/bin" >> $GITHUB_PATH
+
+      - name: Setup MSVC (Windows)
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Build
+        run: make clean all
+        env:
+          CC: ${{ runner.os == 'Windows' && 'cl' || 'gcc' }}
+
+      - name: Run tests
+        run: make test
+
+      - name: Run benchmarks (quick)
+        run: make bench
+
+  build-clang:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install clang
+        run: sudo apt-get update && sudo apt-get install -y clang make
+      - name: Build with clang
+        run: make clang
+      - name: Run tests
+        run: make test
+
+  build-debug:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build debug with ASan
+        run: make debug
+      - name: Run tests with ASan
+        run: make test
+
+  static-analysis:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install cppcheck
+        run: sudo apt-get update && sudo apt-get install -y cppcheck
+      - name: Run cppcheck
+        run: cppcheck --enable=all --std=c11 --error-exitcode=1 src/ include/
+
+  test-valgrind:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install valgrind
+        run: sudo apt-get update && sudo apt-get install -y valgrind make gcc
+      - name: Build debug
+        run: make debug
+      - name: Run tests under valgrind
+        run: valgrind --leak-check=full --error-exitcode=1 ./test_kernels

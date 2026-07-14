@@ -1,0 +1,39 @@
+# Build artifacts
+*.o
+*.a
+*.so
+*.dll
+*.dylib
+*.lib
+*.exe
+test_kernels
+bench_kernels
+*.rlib
+
+# Benchmark artifacts
+bench/*.o
+bench/*.exe
+
+# IDE/editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# opencode
+.opencode/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Rust
+target/
+Cargo.lockfaiss/
+simsimd/
+faiss/
