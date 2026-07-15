@@ -39,7 +39,7 @@ function(vek_add_simd_flags target)
         # AVX-512 (Linux only for now, check at configure time)
         if(UNIX AND NOT APPLE)
             target_compile_options(${target} PRIVATE
-                $<$<COMPILE_LANGUAGE:C>: -mavx512f -mavx512vl -mavx512bw -mavx512dq -mavx512vnni>
+                $<$<COMPILE_LANGUAGE:C>: -mavx512f -mavx512vl -mavx512bw -mavx512dq -mavx512vnni -mavx512vpopcntdq>
             )
         endif()
     elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|arm64")
