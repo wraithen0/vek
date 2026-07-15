@@ -124,7 +124,7 @@ Example output (Intel i5-1135G7 @ 2.4 GHz, AVX-512):
   vek_cosine_f32        69.9       209.6     29.3     0.550000
 ```
 
-### Real-world Comparison (Intel i5-1135G7 @ 2.4 GHz, AVX-512)
+### Real-world Comparison
 
 Run the comparison yourself:
 
@@ -132,11 +132,13 @@ Run the comparison yourself:
 python3 benchmark_compare.py
 ```
 
-Key findings from the comparison:
-- **vek** dominates dot product and L2 distance across all vector sizes (2–900× faster than simsimd)
-- **simsimd** has a specialized cosine implementation that's faster for small vectors
-- **vek** beats NumPy on all operations for small/medium vectors
-- The SSE2 baseline is truly SSE2-only — compiles cleanly without AVX flags
+This benchmarks `vek` (AVX-512 path on this host) against `simsimd` and NumPy across dot product, L2 distance, and cosine similarity for vector sizes 32–8192.
+
+On this machine (Intel i5-1135G7 @ 2.4 GHz, AVX-512), typical findings:
+- `vek` dominates dot product and L2 distance at all sizes
+- `simsimd` has a faster specialized cosine for small vectors
+- `vek` beats NumPy on small/medium vectors
+- The SSE2 baseline compiles cleanly with `-msse2` only (no AVX flags)
 
 ## Roadmap
 
