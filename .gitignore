@@ -38,4 +38,4 @@ Cargo.lock
 
 # External deps (not tracked)
 faiss/
-simsimd/
+simsimd/build_cmake/
