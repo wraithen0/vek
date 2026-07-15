@@ -1,0 +1,315 @@
+Start testing: Jul 15 14:32 +0545
+----------------------------------------------------------
+1/2 Testing: test_kernels
+1/2 Test: test_kernels
+Command: "/home/pulseonix/Documents/build/vek/build_cmake/bin/test_kernels"
+Directory: /home/pulseonix/Documents/build/vek/build_cmake
+"test_kernels" start time: Jul 15 14:32 +0545
+Output:
+----------------------------------------------------------
+
+=== Active backend: avx512 ===
+
+=== Active backend: avx512 ===
+
+=== Basic correctness tests ===
+  PASS: dot zero (got 0.000000, exp 0.000000)
+  PASS: l2sq zero (got 0.000000, exp 0.000000)
+  PASS: cosine zero (got 0.000000, exp 0.000000)
+  PASS: dot identical (got 14.000000, exp 14.000000)
+  PASS: l2sq identical (got 0.000000, exp 0.000000)
+  PASS: cosine identical (got 1.000000, exp 1.000000)
+  PASS: dot orthogonal (got 0.000000, exp 0.000000)
+  PASS: cosine orthogonal (got 0.000000, exp 0.000000)
+  PASS: dot opposite (got -5.000000, exp -5.000000)
+  PASS: cosine opposite (got -1.000000, exp -1.000000)
+  PASS: dot linear scaling (got 56.000000, exp 56.000000)
+
+=== Random vector tests ===
+Random tests: 274 passed, 0 failed
+
+=== Edge case tests ===
+  PASS: n=1 dot (got 15.000000, exp 15.000000)
+  PASS: n=1 l2sq (got 4.000000, exp 4.000000)
+  PASS: n=1 cosine (got 1.000000, exp 1.000000)
+  PASS: n=0 dot (got 0.000000, exp 0.000000)
+  PASS: n=0 l2sq (got 0.000000, exp 0.000000)
+  PASS: n=0 cosine (got 0.000000, exp 0.000000)
+  PASS: zero/non-zero cosine (got 0.000000, exp 0.000000)
+Edge cases: 283 passed, 0 failed
+
+=== Determinism test ===
+  PASS: Deterministic results
+
+=== Symmetry tests ===
+  PASS: dot symmetry (got 51.000000, exp 51.000000)
+  PASS: l2sq symmetry (got 8.000000, exp 8.000000)
+  PASS: cosine symmetry (got 0.927273, exp 0.927273)
+
+=== Cosine similarity properties ===
+  PASS: cos(a,a)==1 (got 1.000000, exp 1.000000)
+  PASS: cos(a,-a)==-1 (got -1.000000, exp -1.000000)
+  PASS: cos symmetry (got 0.666667, exp 0.666667)
+  PASS: cos scale invar (got 0.666667, exp 0.666667)
+
+=== SUMMARY ===
+Total: 291 passed, 0 failed
+<end of output>
+Test time =   0.00 sec
+----------------------------------------------------------
+Test Passed.
+"test_kernels" end time: Jul 15 14:32 +0545
+"test_kernels" time elapsed: 00:00:00
+----------------------------------------------------------
+
+2/2 Testing: test_backends
+2/2 Test: test_backends
+Command: "/home/pulseonix/Documents/build/vek/build_cmake/bin/test_backends"
+Directory: /home/pulseonix/Documents/build/vek/build_cmake
+"test_backends" start time: Jul 15 14:32 +0545
+Output:
+----------------------------------------------------------
+
+=== scalar: Basic f32 correctness ===
+  PASS: dot zero (got 0.000000, exp 0.000000)
+  PASS: l2sq zero (got 0.000000, exp 0.000000)
+  PASS: cosine zero (got 0.000000, exp 0.000000)
+  PASS: dot identical (got 14.000000, exp 14.000000)
+  PASS: l2sq identical (got 0.000000, exp 0.000000)
+  PASS: cosine identical (got 1.000000, exp 1.000000)
+  PASS: dot orthogonal (got 0.000000, exp 0.000000)
+  PASS: cosine orthogonal (got 0.000000, exp 0.000000)
+  PASS: dot opposite (got -5.000000, exp -5.000000)
+  PASS: cosine opposite (got -1.000000, exp -1.000000)
+  PASS: dot linear scaling (got 56.000000, exp 56.000000)
+
+=== scalar: Random f32 vectors ===
+scalar f32 random tests: 274 passed, 0 failed
+
+=== scalar: f32 Edge cases ===
+  PASS: n=1 dot (got 15.000000, exp 15.000000)
+  PASS: n=1 l2sq (got 4.000000, exp 4.000000)
+  PASS: n=1 cosine (got 1.000000, exp 1.000000)
+  PASS: n=0 dot (got 0.000000, exp 0.000000)
+  PASS: n=0 l2sq (got 0.000000, exp 0.000000)
+  PASS: n=0 cosine (got 0.000000, exp 0.000000)
+  PASS: zero/non-zero cosine (got 0.000000, exp 0.000000)
+scalar f32 edge cases: 283 passed, 0 failed
+
+=== scalar: Determinism ===
+  PASS: Deterministic results
+
+=== scalar: f32 Symmetry ===
+  PASS: dot symmetry (got 51.000000, exp 51.000000)
+  PASS: l2sq symmetry (got 8.000000, exp 8.000000)
+  PASS: cosine symmetry (got 0.927273, exp 0.927273)
+
+=== scalar: f32 Cosine properties ===
+  PASS: cos(a,a)==1 (got 1.000000, exp 1.000000)
+  PASS: cos(a,-a)==-1 (got -1.000000, exp -1.000000)
+  PASS: cos symmetry (got 0.666667, exp 0.666667)
+  PASS: cos scale invar (got 0.666667, exp 0.666667)
+
+=== scalar: Basic int8 correctness ===
+  PASS: dot i8 identical (got 14, exp 14)
+  PASS: l2sq i8 identical (got 0, exp 0)
+  PASS: cosine i8 identical (got 1.000000, exp 1.000000)
+  PASS: dot i8 opposite (got -14, exp -14)
+  PASS: cosine i8 opposite (got -1.000000, exp -1.000000)
+  PASS: dot i8 orthogonal (got 0, exp 0)
+  PASS: cosine i8 orthogonal (got 0.000000, exp 0.000000)
+
+=== scalar: Basic uint8 correctness ===
+  PASS: dot u8 identical (got 14, exp 14)
+  PASS: l2sq u8 identical (got 0, exp 0)
+  PASS: cosine u8 identical (got 1.000000, exp 1.000000)
+  PASS: dot u8 mixed (got 10510, exp 10510)
+  PASS: l2sq u8 mixed (got 129032, exp 129032)
+  PASS: dot u8 orthogonal (got 0, exp 0)
+  PASS: cosine u8 orthogonal (got 0.000000, exp 0.000000)
+
+=== sse2: Basic f32 correctness ===
+  PASS: dot zero (got 0.000000, exp 0.000000)
+  PASS: l2sq zero (got 0.000000, exp 0.000000)
+  PASS: cosine zero (got 0.000000, exp 0.000000)
+  PASS: dot identical (got 14.000000, exp 14.000000)
+  PASS: l2sq identical (got 0.000000, exp 0.000000)
+  PASS: cosine identical (got 1.000000, exp 1.000000)
+  PASS: dot orthogonal (got 0.000000, exp 0.000000)
+  PASS: cosine orthogonal (got 0.000000, exp 0.000000)
+  PASS: dot opposite (got -5.000000, exp -5.000000)
+  PASS: cosine opposite (got -1.000000, exp -1.000000)
+  PASS: dot linear scaling (got 56.000000, exp 56.000000)
+
+=== sse2: Random f32 vectors ===
+sse2 f32 random tests: 579 passed, 0 failed
+
+=== sse2: f32 Edge cases ===
+  PASS: n=1 dot (got 15.000000, exp 15.000000)
+  PASS: n=1 l2sq (got 4.000000, exp 4.000000)
+  PASS: n=1 cosine (got 1.000000, exp 1.000000)
+  PASS: n=0 dot (got 0.000000, exp 0.000000)
+  PASS: n=0 l2sq (got 0.000000, exp 0.000000)
+  PASS: n=0 cosine (got 0.000000, exp 0.000000)
+  PASS: zero/non-zero cosine (got 0.000000, exp 0.000000)
+sse2 f32 edge cases: 588 passed, 0 failed
+
+=== sse2: Determinism ===
+  PASS: Deterministic results
+
+=== sse2: f32 Symmetry ===
+  PASS: dot symmetry (got 51.000000, exp 51.000000)
+  PASS: l2sq symmetry (got 8.000000, exp 8.000000)
+  PASS: cosine symmetry (got 0.927273, exp 0.927273)
+
+=== sse2: f32 Cosine properties ===
+  PASS: cos(a,a)==1 (got 1.000000, exp 1.000000)
+  PASS: cos(a,-a)==-1 (got -1.000000, exp -1.000000)
+  PASS: cos symmetry (got 0.666667, exp 0.666667)
+  PASS: cos scale invar (got 0.666667, exp 0.666667)
+
+=== sse2: Basic int8 correctness ===
+  PASS: dot i8 identical (got 14, exp 14)
+  PASS: l2sq i8 identical (got 0, exp 0)
+  PASS: cosine i8 identical (got 1.000000, exp 1.000000)
+  PASS: dot i8 opposite (got -14, exp -14)
+  PASS: cosine i8 opposite (got -1.000000, exp -1.000000)
+  PASS: dot i8 orthogonal (got 0, exp 0)
+  PASS: cosine i8 orthogonal (got 0.000000, exp 0.000000)
+
+=== sse2: Basic uint8 correctness ===
+  PASS: dot u8 identical (got 14, exp 14)
+  PASS: l2sq u8 identical (got 0, exp 0)
+  PASS: cosine u8 identical (got 1.000000, exp 1.000000)
+  PASS: dot u8 mixed (got 10510, exp 10510)
+  PASS: l2sq u8 mixed (got 129032, exp 129032)
+  PASS: dot u8 orthogonal (got 0, exp 0)
+  PASS: cosine u8 orthogonal (got 0.000000, exp 0.000000)
+
+=== avx2: Basic f32 correctness ===
+  PASS: dot zero (got 0.000000, exp 0.000000)
+  PASS: l2sq zero (got 0.000000, exp 0.000000)
+  PASS: cosine zero (got 0.000000, exp 0.000000)
+  PASS: dot identical (got 14.000000, exp 14.000000)
+  PASS: l2sq identical (got 0.000000, exp 0.000000)
+  PASS: cosine identical (got 1.000000, exp 1.000000)
+  PASS: dot orthogonal (got 0.000000, exp 0.000000)
+  PASS: cosine orthogonal (got 0.000000, exp 0.000000)
+  PASS: dot opposite (got -5.000000, exp -5.000000)
+  PASS: cosine opposite (got -1.000000, exp -1.000000)
+  PASS: dot linear scaling (got 56.000000, exp 56.000000)
+
+=== avx2: Random f32 vectors ===
+avx2 f32 random tests: 884 passed, 0 failed
+
+=== avx2: f32 Edge cases ===
+  PASS: n=1 dot (got 15.000000, exp 15.000000)
+  PASS: n=1 l2sq (got 4.000000, exp 4.000000)
+  PASS: n=1 cosine (got 1.000000, exp 1.000000)
+  PASS: n=0 dot (got 0.000000, exp 0.000000)
+  PASS: n=0 l2sq (got 0.000000, exp 0.000000)
+  PASS: n=0 cosine (got 0.000000, exp 0.000000)
+  PASS: zero/non-zero cosine (got 0.000000, exp 0.000000)
+avx2 f32 edge cases: 893 passed, 0 failed
+
+=== avx2: Determinism ===
+  PASS: Deterministic results
+
+=== avx2: f32 Symmetry ===
+  PASS: dot symmetry (got 51.000000, exp 51.000000)
+  PASS: l2sq symmetry (got 8.000000, exp 8.000000)
+  PASS: cosine symmetry (got 0.927273, exp 0.927273)
+
+=== avx2: f32 Cosine properties ===
+  PASS: cos(a,a)==1 (got 1.000000, exp 1.000000)
+  PASS: cos(a,-a)==-1 (got -1.000000, exp -1.000000)
+  PASS: cos symmetry (got 0.666667, exp 0.666667)
+  PASS: cos scale invar (got 0.666667, exp 0.666667)
+
+=== avx2: Basic int8 correctness ===
+  PASS: dot i8 identical (got 14, exp 14)
+  PASS: l2sq i8 identical (got 0, exp 0)
+  PASS: cosine i8 identical (got 1.000000, exp 1.000000)
+  PASS: dot i8 opposite (got -14, exp -14)
+  PASS: cosine i8 opposite (got -1.000000, exp -1.000000)
+  PASS: dot i8 orthogonal (got 0, exp 0)
+  PASS: cosine i8 orthogonal (got 0.000000, exp 0.000000)
+
+=== avx2: Basic uint8 correctness ===
+  PASS: dot u8 identical (got 14, exp 14)
+  PASS: l2sq u8 identical (got 0, exp 0)
+  PASS: cosine u8 identical (got 1.000000, exp 1.000000)
+  PASS: dot u8 mixed (got 10510, exp 10510)
+  PASS: l2sq u8 mixed (got 129032, exp 129032)
+  PASS: dot u8 orthogonal (got 0, exp 0)
+  PASS: cosine u8 orthogonal (got 0.000000, exp 0.000000)
+
+=== avx512: Basic f32 correctness ===
+  PASS: dot zero (got 0.000000, exp 0.000000)
+  PASS: l2sq zero (got 0.000000, exp 0.000000)
+  PASS: cosine zero (got 0.000000, exp 0.000000)
+  PASS: dot identical (got 14.000000, exp 14.000000)
+  PASS: l2sq identical (got 0.000000, exp 0.000000)
+  PASS: cosine identical (got 1.000000, exp 1.000000)
+  PASS: dot orthogonal (got 0.000000, exp 0.000000)
+  PASS: cosine orthogonal (got 0.000000, exp 0.000000)
+  PASS: dot opposite (got -5.000000, exp -5.000000)
+  PASS: cosine opposite (got -1.000000, exp -1.000000)
+  PASS: dot linear scaling (got 56.000000, exp 56.000000)
+
+=== avx512: Random f32 vectors ===
+avx512 f32 random tests: 1189 passed, 0 failed
+
+=== avx512: f32 Edge cases ===
+  PASS: n=1 dot (got 15.000000, exp 15.000000)
+  PASS: n=1 l2sq (got 4.000000, exp 4.000000)
+  PASS: n=1 cosine (got 1.000000, exp 1.000000)
+  PASS: n=0 dot (got 0.000000, exp 0.000000)
+  PASS: n=0 l2sq (got 0.000000, exp 0.000000)
+  PASS: n=0 cosine (got 0.000000, exp 0.000000)
+  PASS: zero/non-zero cosine (got 0.000000, exp 0.000000)
+avx512 f32 edge cases: 1198 passed, 0 failed
+
+=== avx512: Determinism ===
+  PASS: Deterministic results
+
+=== avx512: f32 Symmetry ===
+  PASS: dot symmetry (got 51.000000, exp 51.000000)
+  PASS: l2sq symmetry (got 8.000000, exp 8.000000)
+  PASS: cosine symmetry (got 0.927273, exp 0.927273)
+
+=== avx512: f32 Cosine properties ===
+  PASS: cos(a,a)==1 (got 1.000000, exp 1.000000)
+  PASS: cos(a,-a)==-1 (got -1.000000, exp -1.000000)
+  PASS: cos symmetry (got 0.666667, exp 0.666667)
+  PASS: cos scale invar (got 0.666667, exp 0.666667)
+
+=== avx512: Basic int8 correctness ===
+  PASS: dot i8 identical (got 14, exp 14)
+  PASS: l2sq i8 identical (got 0, exp 0)
+  PASS: cosine i8 identical (got 1.000000, exp 1.000000)
+  PASS: dot i8 opposite (got -14, exp -14)
+  PASS: cosine i8 opposite (got -1.000000, exp -1.000000)
+  PASS: dot i8 orthogonal (got 0, exp 0)
+  PASS: cosine i8 orthogonal (got 0.000000, exp 0.000000)
+
+=== avx512: Basic uint8 correctness ===
+  PASS: dot u8 identical (got 14, exp 14)
+  PASS: l2sq u8 identical (got 0, exp 0)
+  PASS: cosine u8 identical (got 1.000000, exp 1.000000)
+  PASS: dot u8 mixed (got 10510, exp 10510)
+  PASS: l2sq u8 mixed (got 129032, exp 129032)
+  PASS: dot u8 orthogonal (got 0, exp 0)
+  PASS: cosine u8 orthogonal (got 0.000000, exp 0.000000)
+
+=== OVERALL SUMMARY ===
+Total: 1220 passed, 0 failed
+<end of output>
+Test time =   0.00 sec
+----------------------------------------------------------
+Test Passed.
+"test_backends" end time: Jul 15 14:32 +0545
+"test_backends" time elapsed: 00:00:00
+----------------------------------------------------------
+
+End testing: Jul 15 14:32 +0545

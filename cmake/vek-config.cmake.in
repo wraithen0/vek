@@ -1,0 +1,22 @@
+@PACKAGE_INIT@
+
+include(CMakeFindDependencyMacro)
+
+# Dependencies: math library
+find_dependency(m)
+
+include("${CMAKE_CURRENT_LIST_DIR}/vek-targets.cmake")
+
+# Provide imported targets
+add_library(vek::vek INTERFACE IMPORTED)
+set_target_properties(vek::vek PROPERTIES
+    INTERFACE_INCLUDE_DIRECTORIES "${_IMPORT_PREFIX}/include"
+    INTERFACE_LINK_LIBRARIES m
+)
+
+# Alias for static
+add_library(vek::static INTERFACE IMPORTED)
+set_target_properties(vek::static PROPERTIES
+    INTERFACE_INCLUDE_DIRECTORIES "${_IMPORT_PREFIX}/include"
+    INTERFACE_LINK_LIBRARIES m
+)
