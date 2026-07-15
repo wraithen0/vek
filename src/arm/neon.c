@@ -472,3 +472,152 @@ float vek_cosine_u8_neon(const uint8_t *a, const uint8_t *b, size_t n)
 
     return (float)dot_scalar / (norm_a_sqrt * norm_b_sqrt);
 }
+/* ===== Binary (1-bit) variants (NEON) ===== */
+
+int32_t vek_dot_b1_neon(const uint64_t *a, const uint64_t *b, size_t n)
+{
+    const size_t simd_width = 2;
+    size_t words = (n + 63) / 64;
+    size_t i = 0;
+
+    int32x4_t sum_vec = vdupq_n_s32(0);
+
+    for (; i + simd_width <= words; i += simd_width) {
+        uint64x2_t a_vec = vld1q_u64(a + i);
+        uint64x2_t b_vec = vld1q_u64(b + i);
+
+        uint64x2_t xor_vec = veorq_u64(a_vec, b_vec);
+        uint64x2_t xnor = vmvnq_u64(xor_vec);
+        uint8x16_t popcnt = vcntq_u8(vreinterpretq_u8_u64(xnor));
+        uint16x8_t popcnt16 = vpaddlq_u8(popcnt);
+        uint32x4_t popcnt32 = vpaddlq_u16(popcnt16);
+        int32x4_t popcnt32s = vreinterpretq_s32_u32(popcnt32);
+
+        sum_vec = vaddq_s32(sum_vec, popcnt32s);
+    }
+
+    /* Horizontal sum */
+    int32x2_t sum_lo = vget_low_s32(sum_vec);
+    int32x2_t sum_hi = vget_high_s32(sum_vec);
+    int32x2_t sum = vpadd_s32(sum_lo, sum_hi);
+    int32_t sum_scalar = vget_lane_s32(vpadd_s32(sum, sum), 0);
+
+    /* Tail */
+    size_t words = (n + 63) / 64;
+    for (size_t i = 0; i < words; i++) {
+        sum_scalar += __builtin_popcountll(~(a[i] ^ b[i]));
+    }
+
+    return sum_scalar;
+}
+
+int32_t vek_hamming_b1_neon(const uint64_t *a, const uint64_t *b, size_t n)
+{
+    const size_t simd_width = 2;
+    size_t words = (n + 63) / 64;
+    size_t i = 0;
+
+    int32x4_t sum_vec = vdupq_n_s32(0);
+
+    for (; i + simd_width <= (n + 63) / 64; i += simd_width) {
+        uint64x2_t a_vec = vld1q_u64(a + i);
+        uint64x2_t b_vec = vld1q_u64(b + i);
+
+        uint64x2_t xor_vec = veorq_u64(a_vec, b_vec);
+        uint8x16_t popcnt = vcntq_u8(vreinterpretq_u8_u64(xor_vec));
+        uint16x8_t popcnt16 = vpaddlq_u8(popcnt);
+        uint32x4_t popcnt32 = vpaddlq_u16(popcnt16);
+        int32x4_t popcnt32s = vreinterpretq_s32_u32(popcnt32);
+
+        sum_vec = vaddq_s32(sum_vec, popcnt32s);
+    }
+
+    /* Horizontal sum */
+    int32x2_t sum_lo = vget_low_s32(sum_vec);
+    int32x2_t sum_hi = vget_high_s32(sum_vec);
+    int32x2_t sum = vpadd_s32(sum_lo, sum_hi);
+    int32_t sum_scalar = vget_lane_s32(vpadd_s32(sum, sum), 0);
+
+    size_t words = (n + 63) / 64;
+    for (size_t i = 0; i < words; i++) {
+        sum_scalar += __builtin_popcountll(a[i] ^ b[i]);
+    }
+
+    return sum_scalar;
+}
+
+float vek_cosine_b1_neon(const uint64_t *a, const uint64_t *b, size_t n)
+{
+    const size_t simd_width = 2;
+    size_t words = (n + 63) / 64;
+    size_t i = 0;
+
+    int32x4_t dot_vec = vdupq_n_s32(0);
+    int32x4_t norm_a_vec = vdupq_n_s32(0);
+    int32x4_t norm_b_vec = vdupq_n_s32(0);
+
+    for (; i + simd_width <= words; i += simd_width) {
+        uint64x2_t a_vec = vld1q_u64(a + i);
+        uint64x2_t b_vec = vld1q_u64(b + i);
+
+        /* dot product via XNOR + popcnt */
+        uint64x2_t xor_vec = veorq_u64(a_vec, b_vec);
+        uint64x2_t xnor = vmvnq_u64(xor_vec);
+        uint8x16_t popcnt = vcntq_u8(vreinterpretq_u8_u64(xnor));
+        uint16x8_t popcnt16 = vpaddlq_u8(popcnt);
+        uint32x4_t popcnt32 = vpaddlq_u16(popcnt16);
+        int32x4_t popcnt32s = vreinterpretq_s32_u32(popcnt32);
+
+        dot_vec = vaddq_s32(dot_vec, popcnt32s);
+
+        /* norm a */
+        uint8x16_t pop_a = vcntq_u8(vreinterpretq_u8_u64(a_vec));
+        uint16x8_t pop_a16 = vpaddlq_u8(pop_a);
+        uint32x4_t pop_a32 = vpaddlq_u16(pop_a16);
+        int32x4_t pop_a32s = vreinterpretq_s32_u32(pop_a32);
+
+        norm_a_vec = vaddq_s32(norm_a_vec, pop_a32s);
+
+        /* norm b */
+        uint8x16_t pop_b = vcntq_u8(vreinterpretq_u8_u64(b_vec));
+        uint16x8_t pop_b16 = vpaddlq_u8(pop_b);
+        uint32x4_t pop_b32 = vpaddlq_u16(pop_b16);
+        int32x4_t pop_b32s = vreinterpretq_s32_u32(pop_b32);
+
+        norm_b_vec = vaddq_s32(norm_b_vec, pop_b32s);
+    }
+
+    /* Horizontal sums */
+    int32x2_t dot_lo = vget_low_s32(dot_vec);
+    int32x2_t dot_hi = vget_high_s32(dot_vec);
+    int32x2_t dot = vpadd_s32(dot_lo, dot_hi);
+    int32_t dot_scalar = vget_lane_s32(vpadd_s32(dot, dot), 0);
+
+    int32x2_t na_lo = vget_low_s32(norm_a_vec);
+    int32x2_t na_hi = vget_high_s32(norm_a_vec);
+    int32x2_t na = vpadd_s32(na_lo, na_hi);
+    int32_t norm_a_scalar = vget_lane_s32(vpadd_s32(na, na), 0);
+
+    int32x2_t nb_lo = vget_low_s32(norm_b_vec);
+    int32x2_t nb_hi = vget_high_s32(norm_b_vec);
+    int32x2_t nb = vpadd_s32(nb_lo, nb_hi);
+    int32_t norm_b_scalar = vget_lane_s32(vpadd_s32(nb, nb), 0);
+
+    /* Tail */
+    size_t words = (n + 63) / 64;
+    for (size_t i = 0; i < words; i++) {
+        uint64_t xnor = ~(a[i] ^ b[i]);
+        dot_scalar += __builtin_popcountll(xnor);
+        norm_a_scalar += __builtin_popcountll(a[i]);
+        norm_b_scalar += __builtin_popcountll(b[i]);
+    }
+
+    float norm_a_sqrt = sqrtf((float)norm_a_scalar);
+    float norm_b_sqrt = sqrtf((float)norm_b_scalar);
+
+    if (norm_a_sqrt == 0.0f || norm_b_sqrt == 0.0f) {
+        return 0.0f;
+    }
+
+    return (float)dot_scalar / (norm_a_sqrt * norm_b_sqrt);
+}

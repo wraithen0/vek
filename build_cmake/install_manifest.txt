@@ -1,0 +1,11 @@
+/tmp/vek_install/lib/libvek_static.a
+/tmp/vek_install/lib/libvek_shared.so
+/tmp/vek_install/include/vek.h
+/tmp/vek_install/share/licenses/vek/LICENSE
+/tmp/vek_install/share/licenses/vek/LICENSE-MIT
+/tmp/vek_install/share/licenses/vek/LICENSE-APACHE
+/tmp/vek_install/lib/cmake/vek/vek-targets.cmake
+/tmp/vek_install/lib/cmake/vek/vek-targets-release.cmake
+/tmp/vek_install/lib/cmake/vek/vek-config.cmake
+/tmp/vek_install/lib/cmake/vek/vek-config-version.cmake
+/tmp/vek_install/lib/pkgconfig/vek.pc

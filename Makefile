@@ -14,7 +14,7 @@ ifeq ($(UNAME_M),x86_64)
     CFLAGS_SSE2 = -msse2
     CFLAGS_AVX2 = -msse2 -mavx -mavx2 -mfma
     ifeq ($(UNAME_S),Linux)
-        CFLAGS_AVX512 = -msse2 -mavx -mavx2 -mfma -mavx512f -mavx512vl -mavx512bw -mavx512dq -mavx512vnni
+        CFLAGS_AVX512 = -msse2 -mavx -mavx2 -mfma -mavx512f -mavx512vl -mavx512bw -mavx512dq -mavx512vnni -mavx512vpopcntdq
     endif
 endif
 

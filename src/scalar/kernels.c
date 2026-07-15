@@ -134,3 +134,41 @@ float vek_cosine_u8_scalar(const uint8_t *a, const uint8_t *b, size_t n)
 
     return (float)dot / (sqrtf((float)norm_a) * sqrtf((float)norm_b));
 }
+
+/* Binary (1-bit) scalar reference */
+int32_t vek_dot_b1_scalar(const uint64_t *a, const uint64_t *b, size_t n)
+{
+    int32_t sum = 0;
+    size_t words = (n + 63) / 64;
+    for (size_t i = 0; i < words; i++) {
+        uint64_t and_bits = a[i] & b[i];
+        sum += __builtin_popcountll(and_bits);
+    }
+    return sum;
+}
+
+int32_t vek_hamming_b1_scalar(const uint64_t *a, const uint64_t *b, size_t n)
+{
+    int32_t sum = 0;
+    size_t words = (n + 63) / 64;
+    for (size_t i = 0; i < words; i++) {
+        sum += __builtin_popcountll(a[i] ^ b[i]);
+    }
+    return sum;
+}
+
+float vek_cosine_b1_scalar(const uint64_t *a, const uint64_t *b, size_t n)
+{
+    int32_t dot = 0;
+    int32_t norm_a = 0;
+    int32_t norm_b = 0;
+    size_t words = (n + 63) / 64;
+    for (size_t i = 0; i < words; i++) {
+        uint64_t and_bits = a[i] & b[i];
+        dot += __builtin_popcountll(and_bits);
+        norm_a += __builtin_popcountll(a[i]);
+        norm_b += __builtin_popcountll(b[i]);
+    }
+    if (norm_a == 0 || norm_b == 0) return 0.0f;
+    return (float)dot / (sqrtf((float)norm_a) * sqrtf((float)norm_b));
+}

@@ -70,6 +70,35 @@ extern float vek_cosine_i8_neon(const int8_t*, const int8_t*, size_t);
 extern float vek_cosine_u8_neon(const uint8_t*, const uint8_t*, size_t);
 #endif
 
+/* Binary (1-bit) scalar reference declarations */
+extern int32_t vek_dot_b1_scalar(const uint64_t*, const uint64_t*, size_t);
+extern int32_t vek_hamming_b1_scalar(const uint64_t*, const uint64_t*, size_t);
+extern float vek_cosine_b1_scalar(const uint64_t*, const uint64_t*, size_t);
+
+#if defined(__x86_64__) || defined(_M_X64)
+/* Binary (1-bit) SSE2 - fallback to scalar */
+extern int32_t vek_dot_b1_sse2(const uint64_t*, const uint64_t*, size_t);
+extern int32_t vek_hamming_b1_sse2(const uint64_t*, const uint64_t*, size_t);
+extern float vek_cosine_b1_sse2(const uint64_t*, const uint64_t*, size_t);
+
+/* Binary (1-bit) AVX2 - fallback to scalar */
+extern int32_t vek_dot_b1_avx2(const uint64_t*, const uint64_t*, size_t);
+extern int32_t vek_hamming_b1_avx2(const uint64_t*, const uint64_t*, size_t);
+extern float vek_cosine_b1_avx2(const uint64_t*, const uint64_t*, size_t);
+
+/* Binary (1-bit) AVX-512 */
+extern int32_t vek_dot_b1_avx512(const uint64_t*, const uint64_t*, size_t);
+extern int32_t vek_hamming_b1_avx512(const uint64_t*, const uint64_t*, size_t);
+extern float vek_cosine_b1_avx512(const uint64_t*, const uint64_t*, size_t);
+#endif
+
+#if defined(__aarch64__) || defined(_M_ARM64)
+/* Binary (1-bit) NEON */
+extern int32_t vek_dot_b1_neon(const uint64_t*, const uint64_t*, size_t);
+extern int32_t vek_hamming_b1_neon(const uint64_t*, const uint64_t*, size_t);
+extern float vek_cosine_b1_neon(const uint64_t*, const uint64_t*, size_t);
+#endif
+
 #define REL_EPS 1e-5f
 #define ABS_EPS 1e-6f
 
@@ -324,6 +353,33 @@ static void run_edge_cases_f32(const char *backend,
     printf("%s f32 edge cases: %d passed, %d failed\n", backend, tests_passed, tests_failed);
 }
 
+/* Binary (1-bit) tests */
+static void run_basic_tests_b1(const char *backend,
+                               int32_t (*dot_fn)(const uint64_t*, const uint64_t*, size_t),
+                               int32_t (*ham_fn)(const uint64_t*, const uint64_t*, size_t),
+                               float (*cos_fn)(const uint64_t*, const uint64_t*, size_t))
+{
+    printf("\n=== %s: Basic binary (1-bit) correctness ===\n", backend);
+
+    uint64_t a1[] = {0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL};
+    uint64_t b1[] = {0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL};
+    test_assert_eq_i32("dot b1 identical", dot_fn(a1, b1, 128), 128);
+    test_assert_eq_i32("ham b1 identical", ham_fn(a1, b1, 128), 0);
+    test_assert_eq_f32("cosine b1 identical", cos_fn(a1, b1, 128), 1.0f);
+
+    uint64_t a2[] = {0xFFFFFFFFFFFFFFFFULL};
+    uint64_t b2[] = {0x0000000000000000ULL};
+    test_assert_eq_i32("dot b1 opposite", dot_fn(a2, b2, 64), 0);
+    test_assert_eq_i32("ham b1 opposite", ham_fn(a2, b2, 64), 64);
+    test_assert_eq_f32("cosine b1 opposite", cos_fn(a2, b2, 64), 0.0f);  // zero norm for all-zeros
+
+    uint64_t a3[] = {0xAAAAAAAAAAAAAAAAULL};
+    uint64_t b3[] = {0x5555555555555555ULL};
+    test_assert_eq_i32("dot b1 orthogonal", dot_fn(a3, b3, 64), 0);
+    test_assert_eq_i32("ham b1 orthogonal", ham_fn(a3, b3, 64), 64);
+    test_assert_eq_f32("cosine b1 orthogonal", cos_fn(a3, b3, 64), 0.0f);
+}
+
 static void test_deterministic(const char *backend,
                                float (*dot_fn)(const float*, const float*, size_t))
 {
@@ -384,7 +440,8 @@ static void test_cosine_properties_f32(const char *backend,
 /* Generic test runner for a backend */
 #define RUN_BACKEND_TESTS(name, dot_f32, l2sq_f32, cos_f32, \
                            dot_i8, l2sq_i8, cos_i8, \
-                           dot_u8, l2sq_u8, cos_u8) \
+                           dot_u8, l2sq_u8, cos_u8, \
+                           dot_b1, ham_b1, cos_b1) \
     do { \
         run_basic_tests_f32(#name, dot_f32, l2sq_f32, cos_f32); \
         run_random_tests_f32(#name, l2sq_f32, cos_f32); \
@@ -394,6 +451,7 @@ static void test_cosine_properties_f32(const char *backend,
         test_cosine_properties_f32(#name, cos_f32); \
         run_basic_tests_i8(#name, dot_i8, l2sq_i8, cos_i8); \
         run_basic_tests_u8(#name, dot_u8, l2sq_u8, cos_u8); \
+        run_basic_tests_b1(#name, dot_b1, ham_b1, cos_b1); \
     } while (0)
 
 int main(void)
@@ -402,26 +460,30 @@ int main(void)
     RUN_BACKEND_TESTS(scalar,
         vek_dot_f32_scalar, vek_l2sq_f32_scalar, vek_cosine_f32_scalar,
         vek_dot_i8_scalar, vek_l2sq_i8_scalar, vek_cosine_i8_scalar,
-        vek_dot_u8_scalar, vek_l2sq_u8_scalar, vek_cosine_u8_scalar);
+        vek_dot_u8_scalar, vek_l2sq_u8_scalar, vek_cosine_u8_scalar,
+        vek_dot_b1_scalar, vek_hamming_b1_scalar, vek_cosine_b1_scalar);
 
 #if defined(__x86_64__) || defined(_M_X64)
     /* Test SSE2 */
     RUN_BACKEND_TESTS(sse2,
         vek_dot_f32_sse2, vek_l2sq_f32_sse2, vek_cosine_f32_sse2,
         vek_dot_i8_sse2, vek_l2sq_i8_sse2, vek_cosine_i8_sse2,
-        vek_dot_u8_sse2, vek_l2sq_u8_sse2, vek_cosine_u8_sse2);
+        vek_dot_u8_sse2, vek_l2sq_u8_sse2, vek_cosine_u8_sse2,
+        vek_dot_b1_sse2, vek_hamming_b1_sse2, vek_cosine_b1_sse2);
 
     /* Test AVX2 */
     RUN_BACKEND_TESTS(avx2,
         vek_dot_f32_avx2, vek_l2sq_f32_avx2, vek_cosine_f32_avx2,
         vek_dot_i8_avx2, vek_l2sq_i8_avx2, vek_cosine_i8_avx2,
-        vek_dot_u8_avx2, vek_l2sq_u8_avx2, vek_cosine_u8_avx2);
+        vek_dot_u8_avx2, vek_l2sq_u8_avx2, vek_cosine_u8_avx2,
+        vek_dot_b1_avx2, vek_hamming_b1_avx2, vek_cosine_b1_avx2);
 
     /* Test AVX-512 */
     RUN_BACKEND_TESTS(avx512,
         vek_dot_f32_avx512, vek_l2sq_f32_avx512, vek_cosine_f32_avx512,
         vek_dot_i8_avx512, vek_l2sq_i8_avx512, vek_cosine_i8_avx512,
-        vek_dot_u8_avx512, vek_l2sq_u8_avx512, vek_cosine_u8_avx512);
+        vek_dot_u8_avx512, vek_l2sq_u8_avx512, vek_cosine_u8_avx512,
+        vek_dot_b1_avx512, vek_hamming_b1_avx512, vek_cosine_b1_avx512);
 #endif
 
 #if defined(__aarch64__) || defined(_M_ARM64)
@@ -429,7 +491,8 @@ int main(void)
     RUN_BACKEND_TESTS(neon,
         vek_dot_f32_neon, vek_l2sq_f32_neon, vek_cosine_f32_neon,
         vek_dot_i8_neon, vek_l2sq_i8_neon, vek_cosine_i8_neon,
-        vek_dot_u8_neon, vek_l2sq_u8_neon, vek_cosine_u8_neon);
+        vek_dot_u8_neon, vek_l2sq_u8_neon, vek_cosine_u8_neon,
+        vek_dot_b1_neon, vek_hamming_b1_neon, vek_cosine_b1_neon);
 #endif
 
     printf("\n=== OVERALL SUMMARY ===\n");

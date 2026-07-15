@@ -19,6 +19,9 @@ typedef int32_t (*vek_l2sq_i8_fn)(const int8_t*, const int8_t*, size_t);
 typedef uint32_t (*vek_l2sq_u8_fn)(const uint8_t*, const uint8_t*, size_t);
 typedef float (*vek_cosine_i8_fn)(const int8_t*, const int8_t*, size_t);
 typedef float (*vek_cosine_u8_fn)(const uint8_t*, const uint8_t*, size_t);
+typedef int32_t (*vek_dot_b1_fn)(const uint64_t*, const uint64_t*, size_t);
+typedef int32_t (*vek_hamming_b1_fn)(const uint64_t*, const uint64_t*, size_t);
+typedef float (*vek_cosine_b1_fn)(const uint64_t*, const uint64_t*, size_t);
 
 /* Dispatch table */
 static struct {
@@ -31,6 +34,9 @@ static struct {
     vek_l2sq_u8_fn    l2sq_u8;
     vek_cosine_i8_fn  cosine_i8;
     vek_cosine_u8_fn  cosine_u8;
+    vek_dot_b1_fn     dot_b1;
+    vek_hamming_b1_fn hamming_b1;
+    vek_cosine_b1_fn  cosine_b1;
     const char*       name;
     int               initialized;
 } g_dispatch = {0};
@@ -87,6 +93,11 @@ uint32_t vek_l2sq_u8_scalar(const uint8_t*, const uint8_t*, size_t);
 float vek_cosine_i8_scalar(const int8_t*, const int8_t*, size_t);
 float vek_cosine_u8_scalar(const uint8_t*, const uint8_t*, size_t);
 
+/* Binary scalar reference */
+int32_t vek_dot_b1_scalar(const uint64_t*, const uint64_t*, size_t);
+int32_t vek_hamming_b1_scalar(const uint64_t*, const uint64_t*, size_t);
+float vek_cosine_b1_scalar(const uint64_t*, const uint64_t*, size_t);
+
 /* SSE2 backend (x86_64 baseline) */
 #if defined(__x86_64__) || defined(_M_X64)
 float vek_dot_f32_sse2(const float*, const float*, size_t);
@@ -126,6 +137,11 @@ int32_t vek_l2sq_i8_avx512(const int8_t*, const int8_t*, size_t);
 uint32_t vek_l2sq_u8_avx512(const uint8_t*, const uint8_t*, size_t);
 float vek_cosine_i8_avx512(const int8_t*, const int8_t*, size_t);
 float vek_cosine_u8_avx512(const uint8_t*, const uint8_t*, size_t);
+
+/* Binary (1-bit) AVX-512 */
+int32_t vek_dot_b1_avx512(const uint64_t*, const uint64_t*, size_t);
+int32_t vek_hamming_b1_avx512(const uint64_t*, const uint64_t*, size_t);
+float vek_cosine_b1_avx512(const uint64_t*, const uint64_t*, size_t);
 #endif
 
 /* NEON backend (ARM64) */
@@ -260,6 +276,9 @@ static void dispatch_init_scalar(void)
     g_dispatch.l2sq_u8    = vek_l2sq_u8_scalar;
     g_dispatch.cosine_i8  = vek_cosine_i8_scalar;
     g_dispatch.cosine_u8  = vek_cosine_u8_scalar;
+    g_dispatch.dot_b1     = vek_dot_b1_scalar;
+    g_dispatch.hamming_b1 = vek_hamming_b1_scalar;
+    g_dispatch.cosine_b1  = vek_cosine_b1_scalar;
     g_dispatch.name       = "scalar";
 }
 
@@ -275,6 +294,9 @@ static void dispatch_init_sse2(void)
     g_dispatch.l2sq_u8    = vek_l2sq_u8_sse2;
     g_dispatch.cosine_i8  = vek_cosine_i8_sse2;
     g_dispatch.cosine_u8  = vek_cosine_u8_sse2;
+    g_dispatch.dot_b1     = vek_dot_b1_scalar;
+    g_dispatch.hamming_b1 = vek_hamming_b1_scalar;
+    g_dispatch.cosine_b1  = vek_cosine_b1_scalar;
     g_dispatch.name       = "sse2";
 }
 
@@ -289,6 +311,9 @@ static void dispatch_init_avx2(void)
     g_dispatch.l2sq_u8    = vek_l2sq_u8_avx2;
     g_dispatch.cosine_i8  = vek_cosine_i8_avx2;
     g_dispatch.cosine_u8  = vek_cosine_u8_avx2;
+    g_dispatch.dot_b1     = vek_dot_b1_scalar;
+    g_dispatch.hamming_b1 = vek_hamming_b1_scalar;
+    g_dispatch.cosine_b1  = vek_cosine_b1_scalar;
     g_dispatch.name       = "avx2";
 }
 
@@ -303,6 +328,9 @@ static void dispatch_init_avx512(void)
     g_dispatch.l2sq_u8    = vek_l2sq_u8_avx512;
     g_dispatch.cosine_i8  = vek_cosine_i8_avx512;
     g_dispatch.cosine_u8  = vek_cosine_u8_avx512;
+    g_dispatch.dot_b1     = vek_dot_b1_avx512;
+    g_dispatch.hamming_b1 = vek_hamming_b1_avx512;
+    g_dispatch.cosine_b1  = vek_cosine_b1_avx512;
     g_dispatch.name       = "avx512";
 }
 #endif
@@ -406,4 +434,28 @@ float vek_cosine_u8(const uint8_t *a, const uint8_t *b, size_t n)
         vek_init();
     }
     return g_dispatch.cosine_u8(a, b, n);
+}
+
+int32_t vek_dot_b1(const uint64_t *a, const uint64_t *b, size_t n)
+{
+    if (!g_dispatch.initialized) {
+        vek_init();
+    }
+    return g_dispatch.dot_b1(a, b, n);
+}
+
+int32_t vek_hamming_b1(const uint64_t *a, const uint64_t *b, size_t n)
+{
+    if (!g_dispatch.initialized) {
+        vek_init();
+    }
+    return g_dispatch.hamming_b1(a, b, n);
+}
+
+float vek_cosine_b1(const uint64_t *a, const uint64_t *b, size_t n)
+{
+    if (!g_dispatch.initialized) {
+        vek_init();
+    }
+    return g_dispatch.cosine_b1(a, b, n);
 }

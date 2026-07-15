@@ -58,15 +58,20 @@ uint32_t vek_dot_u8(const uint8_t *a, const uint8_t *b, size_t n);
 int32_t vek_l2sq_i8(const int8_t *a, const int8_t *b, size_t n);
 
 /* uint8 squared L2 distance: sum((a[i] - b[i])^2) - accumulator is uint32 */
+// Quantized int8/uint8 operations (v0.5)
+int32_t vek_dot_i8(const int8_t *a, const int8_t *b, size_t n);
+uint32_t vek_dot_u8(const uint8_t *a, const uint8_t *b, size_t n);
+int32_t vek_l2sq_i8(const int8_t *a, const int8_t *b, size_t n);
 uint32_t vek_l2sq_u8(const uint8_t *a, const uint8_t *b, size_t n);
-
-/* int8 cosine similarity: (a·b) / (||a|| * ||b||) - returns float */
 float vek_cosine_i8(const int8_t *a, const int8_t *b, size_t n);
-
-/* uint8 cosine similarity: (a·b) / (||a|| * ||b||) - returns float */
 float vek_cosine_u8(const uint8_t *a, const uint8_t *b, size_t n);
 
-/* ===== Scalar reference declarations (for testing) ===== */
+// Binary (1-bit) operations (v0.6)
+int32_t vek_dot_b1(const uint64_t *a, const uint64_t *b, size_t n);
+int32_t vek_hamming_b1(const uint64_t *a, const uint64_t *b, size_t n);
+float vek_cosine_b1(const uint64_t *a, const uint64_t *b, size_t n);
+
+// Scalar reference declarations (for testing)
 float vek_dot_f32_scalar(const float *a, const float *b, size_t n);
 float vek_l2sq_f32_scalar(const float *a, const float *b, size_t n);
 float vek_cosine_f32_scalar(const float *a, const float *b, size_t n);
@@ -77,6 +82,10 @@ int32_t vek_l2sq_i8_scalar(const int8_t *a, const int8_t *b, size_t n);
 uint32_t vek_l2sq_u8_scalar(const uint8_t *a, const uint8_t *b, size_t n);
 float vek_cosine_i8_scalar(const int8_t *a, const int8_t *b, size_t n);
 float vek_cosine_u8_scalar(const uint8_t *a, const uint8_t *b, size_t n);
+
+int32_t vek_dot_b1_scalar(const uint64_t *a, const uint64_t *b, size_t n);
+int32_t vek_hamming_b1_scalar(const uint64_t *a, const uint64_t *b, size_t n);
+float vek_cosine_b1_scalar(const uint64_t *a, const uint64_t *b, size_t n);
 
 #ifdef __cplusplus
 }

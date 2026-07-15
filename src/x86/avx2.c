@@ -445,3 +445,20 @@ float vek_cosine_u8_avx2(const uint8_t *a, const uint8_t *b, size_t n)
 
     return (float)dot_scalar / (norm_a_sqrt * norm_b_sqrt);
 }
+/* ===== Binary (1-bit) variants - fall back to scalar for AVX2 ===== */
+/* AVX2 lacks 64-bit popcnt; use scalar fallback */
+
+int32_t vek_dot_b1_avx2(const uint64_t *a, const uint64_t *b, size_t n)
+{
+    return vek_dot_b1_scalar(a, b, n);
+}
+
+int32_t vek_hamming_b1_avx2(const uint64_t *a, const uint64_t *b, size_t n)
+{
+    return vek_hamming_b1_scalar(a, b, n);
+}
+
+float vek_cosine_b1_avx2(const uint64_t *a, const uint64_t *b, size_t n)
+{
+    return vek_cosine_b1_scalar(a, b, n);
+}

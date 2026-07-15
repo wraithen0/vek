@@ -343,3 +343,111 @@ float vek_cosine_u8_avx512(const uint8_t *a, const uint8_t *b, size_t n)
 
     return (float)dot_scalar / (norm_a_sqrt * norm_b_sqrt);
 }
+
+/* ===== Binary (1-bit) variants (AVX-512) ===== */
+
+int32_t vek_dot_b1_avx512(const uint64_t *a, const uint64_t *b, size_t n)
+{
+    const size_t simd_width = 8; /* 512-bit = 8 x 64-bit words */
+    size_t words = (n + 63) / 64;
+    size_t i = 0;
+
+    __m512i sum_vec = _mm512_setzero_epi32();
+
+    for (; i + simd_width <= words; i += simd_width) {
+        __m512i a_vec = _mm512_loadu_si512((const __m512i*)(a + i));
+        __m512i b_vec = _mm512_loadu_si512((const __m512i*)(b + i));
+
+        /* XNOR = ~(a ^ b), then popcnt */
+        __m512i xnor = _mm512_xor_epi64(a_vec, b_vec);
+        xnor = _mm512_ternarylogic_epi64(xnor, _mm512_set1_epi64(0), _mm512_set1_epi64(0), 0xFF); // NOT
+        __m512i popcnt = _mm512_popcnt_epi64(xnor);
+
+        /* Horizontal sum across 8 lanes of 64-bit popcnts */
+        __m256i popcnt32 = _mm512_cvtepi64_epi32(popcnt);
+        sum_vec = _mm512_add_epi32(sum_vec, _mm512_inserti32x8(_mm512_castsi256_si512(popcnt32), _mm256_setzero_si256(), 1));
+    }
+
+    int32_t sum_scalar = _mm512_reduce_add_epi32(sum_vec);
+
+    for (; i < words; i++) {
+        sum_scalar += __builtin_popcountll(~(a[i] ^ b[i]));
+    }
+
+    return sum_scalar;
+}
+
+int32_t vek_hamming_b1_avx512(const uint64_t *a, const uint64_t *b, size_t n)
+{
+    const size_t simd_width = 8;
+    size_t words = (n + 63) / 64;
+    size_t i = 0;
+
+    __m512i sum_vec = _mm512_setzero_epi32();
+
+    for (; i + simd_width <= words; i += simd_width) {
+        __m512i a_vec = _mm512_loadu_si512((const __m512i*)(a + i));
+        __m512i b_vec = _mm512_loadu_si512((const __m512i*)(b + i));
+
+        /* XOR + popcnt */
+        __m512i xor_vec = _mm512_xor_epi64(a_vec, b_vec);
+        __m512i popcnt = _mm512_popcnt_epi64(xor_vec);
+
+        __m256i popcnt32 = _mm512_cvtepi64_epi32(popcnt);
+        sum_vec = _mm512_add_epi32(sum_vec, _mm512_inserti32x8(_mm512_castsi256_si512(popcnt32), _mm256_setzero_si256(), 1));
+    }
+
+    int32_t sum_scalar = _mm512_reduce_add_epi32(sum_vec);
+
+    for (; i < words; i++) {
+        sum_scalar += __builtin_popcountll(a[i] ^ b[i]);
+    }
+
+    return sum_scalar;
+}
+
+float vek_cosine_b1_avx512(const uint64_t *a, const uint64_t *b, size_t n)
+{
+    const size_t simd_width = 8;
+    size_t words = (n + 63) / 64;
+    size_t i = 0;
+
+    __m512i dot_vec = _mm512_setzero_epi32();
+    __m512i norm_a_vec = _mm512_setzero_epi32();
+    __m512i norm_b_vec = _mm512_setzero_epi32();
+
+    for (; i + simd_width <= words; i += simd_width) {
+        __m512i a_vec = _mm512_loadu_si512((const __m512i*)(a + i));
+        __m512i b_vec = _mm512_loadu_si512((const __m512i*)(b + i));
+
+        /* dot product via AND + popcnt */
+        __m512i and_vec = _mm512_and_epi64(a_vec, b_vec);
+        __m512i popcnt = _mm512_popcnt_epi64(and_vec);
+        __m256i popcnt32 = _mm512_cvtepi64_epi32(popcnt);
+        dot_vec = _mm512_add_epi32(dot_vec, _mm512_inserti32x8(_mm512_castsi256_si512(popcnt32), _mm256_setzero_si256(), 1));
+
+        /* norm a */
+        __m512i pop_a = _mm512_popcnt_epi64(a_vec);
+        __m256i pop_a32 = _mm512_cvtepi64_epi32(pop_a);
+        norm_a_vec = _mm512_add_epi32(norm_a_vec, _mm512_inserti32x8(_mm512_castsi256_si512(pop_a32), _mm256_setzero_si256(), 1));
+
+        /* norm b */
+        __m512i pop_b = _mm512_popcnt_epi64(b_vec);
+        __m256i pop_b32 = _mm512_cvtepi64_epi32(pop_b);
+        norm_b_vec = _mm512_add_epi32(norm_b_vec, _mm512_inserti32x8(_mm512_castsi256_si512(pop_b32), _mm256_setzero_si256(), 1));
+    }
+
+    int32_t dot_scalar = _mm512_reduce_add_epi32(dot_vec);
+    int32_t norm_a_scalar = _mm512_reduce_add_epi32(norm_a_vec);
+    int32_t norm_b_scalar = _mm512_reduce_add_epi32(norm_b_vec);
+
+    for (; i < words; i++) {
+        uint64_t and_bits = a[i] & b[i];
+        dot_scalar += __builtin_popcountll(and_bits);
+        norm_a_scalar += __builtin_popcountll(a[i]);
+        norm_b_scalar += __builtin_popcountll(b[i]);
+    }
+
+    if (norm_a_scalar == 0 || norm_b_scalar == 0) return 0.0f;
+    return (float)dot_scalar / (sqrtf((float)norm_a_scalar) * sqrtf((float)norm_b_scalar));
+}
