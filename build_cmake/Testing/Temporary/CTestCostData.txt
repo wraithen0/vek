@@ -1,3 +1,0 @@
-test_kernels 1 0.00253489
-test_backends 1 0.00251705
----
