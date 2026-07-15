@@ -1,0 +1,14 @@
+/home/pulseonix/Documents/build/vek/build_cmake/CMakeFiles/vek_static.dir
+/home/pulseonix/Documents/build/vek/build_cmake/CMakeFiles/vek_shared.dir
+/home/pulseonix/Documents/build/vek/build_cmake/CMakeFiles/test_kernels.dir
+/home/pulseonix/Documents/build/vek/build_cmake/CMakeFiles/test_backends.dir
+/home/pulseonix/Documents/build/vek/build_cmake/CMakeFiles/bench_kernels.dir
+/home/pulseonix/Documents/build/vek/build_cmake/CMakeFiles/package.dir
+/home/pulseonix/Documents/build/vek/build_cmake/CMakeFiles/package_source.dir
+/home/pulseonix/Documents/build/vek/build_cmake/CMakeFiles/test.dir
+/home/pulseonix/Documents/build/vek/build_cmake/CMakeFiles/edit_cache.dir
+/home/pulseonix/Documents/build/vek/build_cmake/CMakeFiles/rebuild_cache.dir
+/home/pulseonix/Documents/build/vek/build_cmake/CMakeFiles/list_install_components.dir
+/home/pulseonix/Documents/build/vek/build_cmake/CMakeFiles/install.dir
+/home/pulseonix/Documents/build/vek/build_cmake/CMakeFiles/install/local.dir
+/home/pulseonix/Documents/build/vek/build_cmake/CMakeFiles/install/strip.dir

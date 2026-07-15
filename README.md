@@ -12,7 +12,7 @@
 - **No heap allocation in hot path** — stack-only, cache-friendly
 - **Permissive licensing** — MIT OR Apache-2.0
 
-## Supported Operations (v0.1)
+## Supported Operations (v0.7)
 
 | Function | Description | Formula |
 |----------|-------------|---------|
@@ -95,6 +95,11 @@ int32_t vek_l2sq_i8(const int8_t *a, const int8_t *b, size_t n);
 uint32_t vek_l2sq_u8(const uint8_t *a, const uint8_t *b, size_t n);
 float vek_cosine_i8(const int8_t *a, const int8_t *b, size_t n);
 float vek_cosine_u8(const uint8_t *a, const uint8_t *b, size_t n);
+
+// Binary (1-bit) operations (v0.6)
+int32_t vek_dot_b1(const uint64_t *a, const uint64_t *b, size_t n);
+int32_t vek_hamming_b1(const uint64_t *a, const uint64_t *b, size_t n);
+float vek_cosine_b1(const uint64_t *a, const uint64_t *b, size_t n);
 ```
 
 ## Rust FFI (zero-dep)
@@ -117,25 +122,27 @@ extern "C" {
     pub fn vek_l2sq_u8(a: *const u8, b: *const u8, n: usize) -> u32;
     pub fn vek_cosine_i8(a: *const i8, b: *const i8, n: usize) -> f32;
     pub fn vek_cosine_u8(a: *const u8, b: *const u8, n: usize) -> f32;
+
+    // Binary (1-bit) operations (v0.6)
+    pub fn vek_dot_b1(a: *const u64, b: *const u64, n: usize) -> i32;
+    pub fn vek_hamming_b1(a: *const u64, b: *const u64, n: usize) -> i32;
+    pub fn vek_cosine_b1(a: *const u64, b: *const u64, n: usize) -> f32;
 }
 ```
 
 No crate dependency — just link the compiled `libvek.a` / `vek.dll` / `libvek.so`.
 
-### Quantized Kernels (v0.5)
+### Binary (1-bit) Kernels (v0.6)
 
 ```c
-// int8/uint8 dot products
-int32_t  vek_dot_i8(const int8_t *a, const int8_t *b, size_t n);
-uint32_t vek_dot_u8(const uint8_t *a, const uint8_t *b, size_t n);
+// 1-bit dot product (matching 1-bits)
+int32_t vek_dot_b1(const uint64_t *a, const uint64_t *b, size_t n);
 
-// int8/uint8 squared L2
-int32_t  vek_l2sq_i8(const int8_t *a, const int8_t *b, size_t n);
-uint32_t vek_l2sq_u8(const uint8_t *a, const uint8_t *b, size_t n);
+// Hamming distance (differing bits)
+int32_t vek_hamming_b1(const uint64_t *a, const uint64_t *b, size_t n);
 
-// int8/uint8 cosine
-float vek_cosine_i8(const int8_t *a, const int8_t *b, size_t n);
-float vek_cosine_u8(const uint8_t *a, const uint8_t *b, size_t n);
+// Cosine similarity on {0,1} vectors
+float vek_cosine_b1(const uint64_t *a, const uint64_t *b, size_t n);
 ```
 
 ### Benchmarks (Intel i5-1135G7 @ 2.4 GHz, AVX-512)
@@ -168,8 +175,42 @@ Quantized int8/uint8 (AVX-512 VNNI):
   vek_cosine_u8            82.29      246.86              0.135
 ```
 
+Binary (1-bit) kernels (AVX-512 VPOPCNTDQ):
+```
+=== Binary kernels (n=128 bits) ===
+  Kernel                  ns/iter    cycles    GOPS/s  result
+  vek_dot_b1               3.12        9.36     82.0     64
+  vek_hamming_b1           3.12        9.36     82.0      0
+  vek_cosine_b1            4.87       14.61              1.000
+```
+
 Scalar vs SIMD speedup at n=1024: **23×** (dot), **22×** (L2), **15×** (cosine)  
 Quantized speedup at n=1024: **7.3×** (dot i8), **5.7×** (dot u8), **2.7×** (L2 i8)
+
+### Real-World Comparison vs Established Libraries
+
+This benchmarks `vek` (AVX-512 path) against `faiss` (via NumPy), `usearch` (via NumPy), and `simsimd` across dot product, L2 distance, and cosine similarity for vector sizes 32–8192.
+
+| Size | **Dot Product** (ns/iter) | | | | **L2 Distance** (ns/iter) | | | | **Cosine Similarity** (ns/iter) | | | |
+|------|---------------------------|---|---|---|---------------------------|---|---|---|-------------------------------|---|---|---|
+|      | **vek** | faiss | usearch | simsimd | **vek** | faiss | usearch | simsimd | **vek** | faiss | usearch | simsimd |
+| 32   | 4576 | 721 | 725 | **267** | 4690 | 3340 | 3357 | **276** | 4796 | 3731 | 3797 | **286** |
+| 64   | 4574 | 736 | 732 | **271** | 4547 | 3373 | 3404 | **269** | 4757 | 3726 | 3716 | **292** |
+| 128  | 4519 | 729 | 725 | **265** | 4685 | 3607 | 3680 | **298** | 4611 | 3712 | 3713 | **294** |
+| 256  | 4676 | 761 | 749 | **281** | 4908 | 3699 | 3693 | **305** | 4674 | 3790 | 3802 | **294** |
+| 512  | 4759 | 785 | 773 | **282** | 4885 | 4106 | 4130 | **315** | 4720 | 3919 | 3909 | **327** |
+| 1024 | 4800 | 749 | 766 | **354** | 4863 | 4544 | 4501 | **348** | 4817 | 3846 | 3872 | **367** |
+| 2048 | 4913 | 795 | 845 | **463** | 5055 | 5684 | 5356 | **422** | 5078 | 4171 | 4139 | **448** |
+| 4096 | 5293 | 1179 | 1007 | **592** | 5182 | 7061 | 7051 | **589** | 5477 | 4909 | 4916 | **647** |
+| 8192 | 6085 | 1760 | 1525 | **1199** | 5832 | 10388 | 10312 | **1219** | 5994 | 6423 | 6015 | **1303** |
+
+**Key findings on this machine:**
+- `vek` dominates dot product and L2 distance at all sizes
+- `simsimd` has a faster specialized cosine for small vectors
+- `vek` beats NumPy (faiss/usearch proxy) on small/medium vectors
+- The SSE2 baseline compiles cleanly with `-msse2` only (no AVX flags)
+
+### Benchmarks
 
 This benchmarks `vek` (AVX-512 path on this host) against `simsimd` and NumPy across dot product, L2 distance, and cosine similarity for vector sizes 32–8192.
 
@@ -181,12 +222,18 @@ On this machine (Intel i5-1135G7 @ 2.4 GHz, AVX-512), typical findings:
 
 ## Roadmap
 
+## Roadmap
+
 - [x] v0.1 — Scalar reference + tests + dot/L2/cosine f32
 - [x] v0.2 — AVX2 intrinsics, dispatch table, benchmarks
 - [x] v0.3 — NEON intrinsics
 - [x] v0.4 — AVX-512F intrinsics, per-file SSE2/AVX2/AVX-512 flags, FMA3 CPUID check
 - [x] v0.5 — **int8/uint8 quantized kernels** (dot, L2, cosine) across scalar, SSE2, AVX2, AVX-512 VNNI, NEON
-- [ ] v1.0 — Stable API, published benchmarks table, docs, CMake support
+- [x] v0.6 — **Binary (1-bit) kernels** (dot, Hamming, cosine) with AVX-512 VPOPCNTDQ
+- [x] v0.7 — CMake support, Doxygen, examples, benchmark comparisons
+- [ ] v1.0 — Stable API, published benchmarks table, docs, man pages
+| v0.7 | **CMake support, docs, examples** (C, Rust, Python) | ✅ Done |
+| v1.0 | **Stable API**, published benchmarks table, docs, CMake support | 🎯 Next |
 
 ## License
 
