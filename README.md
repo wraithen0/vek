@@ -83,10 +83,18 @@ int vek_init(void);
 // Get active backend name: "scalar", "sse2", "avx2", "avx512", "neon"
 const char* vek_backend_name(void);
 
-// Core operations
+// Core f32 operations
 float vek_dot_f32(const float *a, const float *b, size_t n);
 float vek_l2sq_f32(const float *a, const float *b, size_t n);
 float vek_cosine_f32(const float *a, const float *b, size_t n);
+
+// Quantized int8/uint8 operations (v0.5)
+int32_t vek_dot_i8(const int8_t *a, const int8_t *b, size_t n);
+uint32_t vek_dot_u8(const uint8_t *a, const uint8_t *b, size_t n);
+int32_t vek_l2sq_i8(const int8_t *a, const int8_t *b, size_t n);
+uint32_t vek_l2sq_u8(const uint8_t *a, const uint8_t *b, size_t n);
+float vek_cosine_i8(const int8_t *a, const int8_t *b, size_t n);
+float vek_cosine_u8(const uint8_t *a, const uint8_t *b, size_t n);
 ```
 
 ## Rust FFI (zero-dep)
@@ -96,9 +104,19 @@ float vek_cosine_f32(const float *a, const float *b, size_t n);
 extern "C" {
     pub fn vek_init() -> i32;
     pub fn vek_backend_name() -> *const c_char;
+    
+    // Core f32 operations
     pub fn vek_dot_f32(a: *const f32, b: *const f32, n: usize) -> f32;
     pub fn vek_l2sq_f32(a: *const f32, b: *const f32, n: usize) -> f32;
     pub fn vek_cosine_f32(a: *const f32, b: *const f32, n: usize) -> f32;
+    
+    // Quantized int8/uint8 operations (v0.5)
+    pub fn vek_dot_i8(a: *const i8, b: *const i8, n: usize) -> i32;
+    pub fn vek_dot_u8(a: *const u8, b: *const u8, n: usize) -> u32;
+    pub fn vek_l2sq_i8(a: *const i8, b: *const i8, n: usize) -> i32;
+    pub fn vek_l2sq_u8(a: *const u8, b: *const u8, n: usize) -> u32;
+    pub fn vek_cosine_i8(a: *const i8, b: *const i8, n: usize) -> f32;
+    pub fn vek_cosine_u8(a: *const u8, b: *const u8, n: usize) -> f32;
 }
 ```
 
@@ -146,8 +164,8 @@ On this machine (Intel i5-1135G7 @ 2.4 GHz, AVX-512), typical findings:
 - [x] v0.2 — AVX2 intrinsics, dispatch table, benchmarks
 - [x] v0.3 — NEON intrinsics
 - [x] v0.4 — AVX-512F intrinsics, per-file SSE2/AVX2/AVX-512 flags, FMA3 CPUID check
-- [ ] v0.5 — int8/uint8 quantized variants (binary embeddings)
-- [ ] v1.0 — Stable API, published benchmarks table, docs
+- [x] v0.5 — **int8/uint8 quantized kernels** (dot, L2, cosine) across scalar, SSE2, AVX2, AVX-512 VNNI, NEON
+- [ ] v1.0 — Stable API, published benchmarks table, docs, CMake support
 
 ## License
 
