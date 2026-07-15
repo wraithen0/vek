@@ -13,12 +13,24 @@
 typedef float (*vek_dot_f32_fn)(const float*, const float*, size_t);
 typedef float (*vek_l2sq_f32_fn)(const float*, const float*, size_t);
 typedef float (*vek_cosine_f32_fn)(const float*, const float*, size_t);
+typedef int32_t (*vek_dot_i8_fn)(const int8_t*, const int8_t*, size_t);
+typedef uint32_t (*vek_dot_u8_fn)(const uint8_t*, const uint8_t*, size_t);
+typedef int32_t (*vek_l2sq_i8_fn)(const int8_t*, const int8_t*, size_t);
+typedef uint32_t (*vek_l2sq_u8_fn)(const uint8_t*, const uint8_t*, size_t);
+typedef float (*vek_cosine_i8_fn)(const int8_t*, const int8_t*, size_t);
+typedef float (*vek_cosine_u8_fn)(const uint8_t*, const uint8_t*, size_t);
 
 /* Dispatch table */
 static struct {
     vek_dot_f32_fn    dot_f32;
     vek_l2sq_f32_fn   l2sq_f32;
     vek_cosine_f32_fn cosine_f32;
+    vek_dot_i8_fn     dot_i8;
+    vek_dot_u8_fn     dot_u8;
+    vek_l2sq_i8_fn    l2sq_i8;
+    vek_l2sq_u8_fn    l2sq_u8;
+    vek_cosine_i8_fn  cosine_i8;
+    vek_cosine_u8_fn  cosine_u8;
     const char*       name;
     int               initialized;
 } g_dispatch = {0};
@@ -31,6 +43,9 @@ static void dispatch_init_scalar(void);
 static void dispatch_init_sse2(void);
 static void dispatch_init_avx2(void);
 static void dispatch_init_avx512(void);
+#if defined(__aarch64__) || defined(_M_ARM64)
+static void dispatch_init_neon(void);
+#endif
 
 static int cpu_has_avx2_runtime(void);
 static int cpu_has_avx512f_runtime(void);
@@ -64,21 +79,53 @@ float vek_dot_f32_scalar(const float*, const float*, size_t);
 float vek_l2sq_f32_scalar(const float*, const float*, size_t);
 float vek_cosine_f32_scalar(const float*, const float*, size_t);
 
+/* Quantized scalar reference */
+int32_t vek_dot_i8_scalar(const int8_t*, const int8_t*, size_t);
+uint32_t vek_dot_u8_scalar(const uint8_t*, const uint8_t*, size_t);
+int32_t vek_l2sq_i8_scalar(const int8_t*, const int8_t*, size_t);
+uint32_t vek_l2sq_u8_scalar(const uint8_t*, const uint8_t*, size_t);
+float vek_cosine_i8_scalar(const int8_t*, const int8_t*, size_t);
+float vek_cosine_u8_scalar(const uint8_t*, const uint8_t*, size_t);
+
 /* SSE2 backend (x86_64 baseline) */
 #if defined(__x86_64__) || defined(_M_X64)
 float vek_dot_f32_sse2(const float*, const float*, size_t);
 float vek_l2sq_f32_sse2(const float*, const float*, size_t);
 float vek_cosine_f32_sse2(const float*, const float*, size_t);
 
+/* SSE2 quantized */
+int32_t vek_dot_i8_sse2(const int8_t*, const int8_t*, size_t);
+uint32_t vek_dot_u8_sse2(const uint8_t*, const uint8_t*, size_t);
+int32_t vek_l2sq_i8_sse2(const int8_t*, const int8_t*, size_t);
+uint32_t vek_l2sq_u8_sse2(const uint8_t*, const uint8_t*, size_t);
+float vek_cosine_i8_sse2(const int8_t*, const int8_t*, size_t);
+float vek_cosine_u8_sse2(const uint8_t*, const uint8_t*, size_t);
+
 /* AVX2 backend */
 float vek_dot_f32_avx2(const float*, const float*, size_t);
 float vek_l2sq_f32_avx2(const float*, const float*, size_t);
 float vek_cosine_f32_avx2(const float*, const float*, size_t);
 
+/* AVX2 quantized */
+int32_t vek_dot_i8_avx2(const int8_t*, const int8_t*, size_t);
+uint32_t vek_dot_u8_avx2(const uint8_t*, const uint8_t*, size_t);
+int32_t vek_l2sq_i8_avx2(const int8_t*, const int8_t*, size_t);
+uint32_t vek_l2sq_u8_avx2(const uint8_t*, const uint8_t*, size_t);
+float vek_cosine_i8_avx2(const int8_t*, const int8_t*, size_t);
+float vek_cosine_u8_avx2(const uint8_t*, const uint8_t*, size_t);
+
 /* AVX-512 backend */
 float vek_dot_f32_avx512(const float*, const float*, size_t);
 float vek_l2sq_f32_avx512(const float*, const float*, size_t);
 float vek_cosine_f32_avx512(const float*, const float*, size_t);
+
+/* AVX-512 quantized (VNNI) */
+int32_t vek_dot_i8_avx512(const int8_t*, const int8_t*, size_t);
+uint32_t vek_dot_u8_avx512(const uint8_t*, const uint8_t*, size_t);
+int32_t vek_l2sq_i8_avx512(const int8_t*, const int8_t*, size_t);
+uint32_t vek_l2sq_u8_avx512(const uint8_t*, const uint8_t*, size_t);
+float vek_cosine_i8_avx512(const int8_t*, const int8_t*, size_t);
+float vek_cosine_u8_avx512(const uint8_t*, const uint8_t*, size_t);
 #endif
 
 /* NEON backend (ARM64) */
@@ -86,6 +133,14 @@ float vek_cosine_f32_avx512(const float*, const float*, size_t);
 float vek_dot_f32_neon(const float*, const float*, size_t);
 float vek_l2sq_f32_neon(const float*, const float*, size_t);
 float vek_cosine_f32_neon(const float*, const float*, size_t);
+
+/* NEON quantized */
+int32_t vek_dot_i8_neon(const int8_t*, const int8_t*, size_t);
+uint32_t vek_dot_u8_neon(const uint8_t*, const uint8_t*, size_t);
+int32_t vek_l2sq_i8_neon(const int8_t*, const int8_t*, size_t);
+uint32_t vek_l2sq_u8_neon(const uint8_t*, const uint8_t*, size_t);
+float vek_cosine_i8_neon(const int8_t*, const int8_t*, size_t);
+float vek_cosine_u8_neon(const uint8_t*, const uint8_t*, size_t);
 #endif
 
 /* CPU feature detection */
@@ -199,6 +254,12 @@ static void dispatch_init_scalar(void)
     g_dispatch.dot_f32    = vek_dot_f32_scalar;
     g_dispatch.l2sq_f32   = vek_l2sq_f32_scalar;
     g_dispatch.cosine_f32 = vek_cosine_f32_scalar;
+    g_dispatch.dot_i8     = vek_dot_i8_scalar;
+    g_dispatch.dot_u8     = vek_dot_u8_scalar;
+    g_dispatch.l2sq_i8    = vek_l2sq_i8_scalar;
+    g_dispatch.l2sq_u8    = vek_l2sq_u8_scalar;
+    g_dispatch.cosine_i8  = vek_cosine_i8_scalar;
+    g_dispatch.cosine_u8  = vek_cosine_u8_scalar;
     g_dispatch.name       = "scalar";
 }
 
@@ -208,6 +269,12 @@ static void dispatch_init_sse2(void)
     g_dispatch.dot_f32    = vek_dot_f32_sse2;
     g_dispatch.l2sq_f32   = vek_l2sq_f32_sse2;
     g_dispatch.cosine_f32 = vek_cosine_f32_sse2;
+    g_dispatch.dot_i8     = vek_dot_i8_sse2;
+    g_dispatch.dot_u8     = vek_dot_u8_sse2;
+    g_dispatch.l2sq_i8    = vek_l2sq_i8_sse2;
+    g_dispatch.l2sq_u8    = vek_l2sq_u8_sse2;
+    g_dispatch.cosine_i8  = vek_cosine_i8_sse2;
+    g_dispatch.cosine_u8  = vek_cosine_u8_sse2;
     g_dispatch.name       = "sse2";
 }
 
@@ -216,6 +283,12 @@ static void dispatch_init_avx2(void)
     g_dispatch.dot_f32    = vek_dot_f32_avx2;
     g_dispatch.l2sq_f32   = vek_l2sq_f32_avx2;
     g_dispatch.cosine_f32 = vek_cosine_f32_avx2;
+    g_dispatch.dot_i8     = vek_dot_i8_avx2;
+    g_dispatch.dot_u8     = vek_dot_u8_avx2;
+    g_dispatch.l2sq_i8    = vek_l2sq_i8_avx2;
+    g_dispatch.l2sq_u8    = vek_l2sq_u8_avx2;
+    g_dispatch.cosine_i8  = vek_cosine_i8_avx2;
+    g_dispatch.cosine_u8  = vek_cosine_u8_avx2;
     g_dispatch.name       = "avx2";
 }
 
@@ -224,6 +297,12 @@ static void dispatch_init_avx512(void)
     g_dispatch.dot_f32    = vek_dot_f32_avx512;
     g_dispatch.l2sq_f32   = vek_l2sq_f32_avx512;
     g_dispatch.cosine_f32 = vek_cosine_f32_avx512;
+    g_dispatch.dot_i8     = vek_dot_i8_avx512;
+    g_dispatch.dot_u8     = vek_dot_u8_avx512;
+    g_dispatch.l2sq_i8    = vek_l2sq_i8_avx512;
+    g_dispatch.l2sq_u8    = vek_l2sq_u8_avx512;
+    g_dispatch.cosine_i8  = vek_cosine_i8_avx512;
+    g_dispatch.cosine_u8  = vek_cosine_u8_avx512;
     g_dispatch.name       = "avx512";
 }
 #endif
@@ -234,6 +313,12 @@ static void dispatch_init_neon(void)
     g_dispatch.dot_f32    = vek_dot_f32_neon;
     g_dispatch.l2sq_f32   = vek_l2sq_f32_neon;
     g_dispatch.cosine_f32 = vek_cosine_f32_neon;
+    g_dispatch.dot_i8     = vek_dot_i8_neon;
+    g_dispatch.dot_u8     = vek_dot_u8_neon;
+    g_dispatch.l2sq_i8    = vek_l2sq_i8_neon;
+    g_dispatch.l2sq_u8    = vek_l2sq_u8_neon;
+    g_dispatch.cosine_i8  = vek_cosine_i8_neon;
+    g_dispatch.cosine_u8  = vek_cosine_u8_neon;
     g_dispatch.name       = "neon";
 }
 #endif
@@ -273,4 +358,52 @@ float vek_cosine_f32(const float *a, const float *b, size_t n)
         vek_init();
     }
     return g_dispatch.cosine_f32(a, b, n);
+}
+
+int32_t vek_dot_i8(const int8_t *a, const int8_t *b, size_t n)
+{
+    if (!g_dispatch.initialized) {
+        vek_init();
+    }
+    return g_dispatch.dot_i8(a, b, n);
+}
+
+uint32_t vek_dot_u8(const uint8_t *a, const uint8_t *b, size_t n)
+{
+    if (!g_dispatch.initialized) {
+        vek_init();
+    }
+    return g_dispatch.dot_u8(a, b, n);
+}
+
+int32_t vek_l2sq_i8(const int8_t *a, const int8_t *b, size_t n)
+{
+    if (!g_dispatch.initialized) {
+        vek_init();
+    }
+    return g_dispatch.l2sq_i8(a, b, n);
+}
+
+uint32_t vek_l2sq_u8(const uint8_t *a, const uint8_t *b, size_t n)
+{
+    if (!g_dispatch.initialized) {
+        vek_init();
+    }
+    return g_dispatch.l2sq_u8(a, b, n);
+}
+
+float vek_cosine_i8(const int8_t *a, const int8_t *b, size_t n)
+{
+    if (!g_dispatch.initialized) {
+        vek_init();
+    }
+    return g_dispatch.cosine_i8(a, b, n);
+}
+
+float vek_cosine_u8(const uint8_t *a, const uint8_t *b, size_t n)
+{
+    if (!g_dispatch.initialized) {
+        vek_init();
+    }
+    return g_dispatch.cosine_u8(a, b, n);
 }

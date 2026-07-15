@@ -123,3 +123,352 @@ float vek_cosine_f32_neon(const float *a, const float *b, size_t n)
 
     return dot_scalar / (norm_a_sqrt * norm_b_sqrt);
 }
+
+/* ===== Quantized int8/uint8 variants (NEON) ===== */
+
+/* NEON int8 dot product */
+int32_t vek_dot_i8_neon(const int8_t *a, const int8_t *b, size_t n)
+{
+    const size_t simd_width = 16; /* 128-bit = 16 int8 */
+    size_t i = 0;
+
+    int32x4_t sum_vec = vdupq_n_s32(0);
+
+    for (; i + simd_width <= n; i += simd_width) {
+        int8x16_t a_vec = vld1q_s8(a + i);
+        int8x16_t b_vec = vld1q_s8(b + i);
+
+        /* Convert to 16-bit, multiply, accumulate to 32-bit */
+        int16x8_t a_lo = vmovl_s8(vget_low_s8(a_vec));
+        int16x8_t a_hi = vmovl_s8(vget_high_s8(a_vec));
+        int16x8_t b_lo = vmovl_s8(vget_low_s8(b_vec));
+        int16x8_t b_hi = vmovl_s8(vget_high_s8(b_vec));
+
+        int32x4_t prod_lo = vmull_s16(vget_low_s16(a_lo), vget_low_s16(b_lo));
+        int32x4_t prod_hi = vmull_s16(vget_high_s16(a_lo), vget_high_s16(b_lo));
+        int32x4_t prod_lo2 = vmull_s16(vget_low_s16(a_hi), vget_low_s16(b_hi));
+        int32x4_t prod_hi2 = vmull_s16(vget_high_s16(a_hi), vget_high_s16(b_hi));
+
+        sum_vec = vaddq_s32(sum_vec, prod_lo);
+        sum_vec = vaddq_s32(sum_vec, prod_hi);
+        sum_vec = vaddq_s32(sum_vec, prod_lo2);
+        sum_vec = vaddq_s32(sum_vec, prod_hi2);
+    }
+
+    /* Horizontal sum */
+    int32x2_t sum_lo = vget_low_s32(sum_vec);
+    int32x2_t sum_hi = vget_high_s32(sum_vec);
+    int32x2_t sum = vpadd_s32(sum_lo, sum_hi);
+    int32_t sum_scalar = vget_lane_s32(vpadd_s32(sum, sum), 0);
+
+    /* Tail */
+    for (; i < n; i++) {
+        sum_scalar += (int32_t)a[i] * (int32_t)b[i];
+    }
+
+    return sum_scalar;
+}
+
+/* NEON uint8 dot product */
+uint32_t vek_dot_u8_neon(const uint8_t *a, const uint8_t *b, size_t n)
+{
+    const size_t simd_width = 16;
+    size_t i = 0;
+
+    uint32x4_t sum_vec = vdupq_n_u32(0);
+
+    for (; i + simd_width <= n; i += simd_width) {
+        uint8x16_t a_vec = vld1q_u8(a + i);
+        uint8x16_t b_vec = vld1q_u8(b + i);
+
+        uint16x8_t a_lo = vmovl_u8(vget_low_u8(a_vec));
+        uint16x8_t a_hi = vmovl_u8(vget_high_u8(a_vec));
+        uint16x8_t b_lo = vmovl_u8(vget_low_u8(b_vec));
+        uint16x8_t b_hi = vmovl_u8(vget_high_u8(b_vec));
+
+        uint32x4_t prod_lo = vmull_u16(vget_low_u16(a_lo), vget_low_u16(b_lo));
+        uint32x4_t prod_hi = vmull_u16(vget_high_u16(a_lo), vget_high_u16(b_lo));
+        uint32x4_t prod_lo2 = vmull_u16(vget_low_u16(a_hi), vget_low_u16(b_hi));
+        uint32x4_t prod_hi2 = vmull_u16(vget_high_u16(a_hi), vget_high_u16(b_hi));
+
+        sum_vec = vaddq_u32(sum_vec, prod_lo);
+        sum_vec = vaddq_u32(sum_vec, prod_hi);
+        sum_vec = vaddq_u32(sum_vec, prod_lo2);
+        sum_vec = vaddq_u32(sum_vec, prod_hi2);
+    }
+
+    /* Horizontal sum */
+    uint32x2_t sum_lo = vget_low_u32(sum_vec);
+    uint32x2_t sum_hi = vget_high_u32(sum_vec);
+    uint32x2_t sum = vpadd_u32(sum_lo, sum_hi);
+    uint32_t sum_scalar = vget_lane_u32(vpadd_u32(sum, sum), 0);
+
+    for (; i < n; i++) {
+        sum_scalar += (uint32_t)a[i] * (uint32_t)b[i];
+    }
+
+    return sum_scalar;
+}
+
+/* NEON int8 squared L2 distance */
+int32_t vek_l2sq_i8_neon(const int8_t *a, const int8_t *b, size_t n)
+{
+    const size_t simd_width = 16;
+    size_t i = 0;
+
+    int32x4_t sum_vec = vdupq_n_s32(0);
+
+    for (; i + simd_width <= n; i += simd_width) {
+        int8x16_t a_vec = vld1q_s8(a + i);
+        int8x16_t b_vec = vld1q_s8(b + i);
+
+        int16x8_t a_lo = vmovl_s8(vget_low_s8(a_vec));
+        int16x8_t a_hi = vmovl_s8(vget_high_s8(a_vec));
+        int16x8_t b_lo = vmovl_s8(vget_low_s8(b_vec));
+        int16x8_t b_hi = vmovl_s8(vget_high_s8(b_vec));
+
+        int16x8_t diff_lo = vsubq_s16(a_lo, b_lo);
+        int16x8_t diff_hi = vsubq_s16(a_hi, b_hi);
+
+        int32x4_t sq_lo = vmull_s16(vget_low_s16(diff_lo), vget_low_s16(diff_lo));
+        int32x4_t sq_hi = vmull_s16(vget_high_s16(diff_lo), vget_high_s16(diff_lo));
+        int32x4_t sq_lo2 = vmull_s16(vget_low_s16(diff_hi), vget_low_s16(diff_hi));
+        int32x4_t sq_hi2 = vmull_s16(vget_high_s16(diff_hi), vget_high_s16(diff_hi));
+
+        sum_vec = vaddq_s32(sum_vec, sq_lo);
+        sum_vec = vaddq_s32(sum_vec, sq_hi);
+        sum_vec = vaddq_s32(sum_vec, sq_lo2);
+        sum_vec = vaddq_s32(sum_vec, sq_hi2);
+    }
+
+    /* Horizontal sum */
+    int32x2_t sum_lo = vget_low_s32(sum_vec);
+    int32x2_t sum_hi = vget_high_s32(sum_vec);
+    int32x2_t sum = vpadd_s32(sum_lo, sum_hi);
+    int32_t sum_scalar = vget_lane_s32(vpadd_s32(sum, sum), 0);
+
+    for (; i < n; i++) {
+        int32_t diff = (int32_t)a[i] - (int32_t)b[i];
+        sum_scalar += diff * diff;
+    }
+
+    return sum_scalar;
+}
+
+/* NEON uint8 squared L2 distance */
+uint32_t vek_l2sq_u8_neon(const uint8_t *a, const uint8_t *b, size_t n)
+{
+    const size_t simd_width = 16;
+    size_t i = 0;
+
+    uint32x4_t sum_vec = vdupq_n_u32(0);
+
+    for (; i + simd_width <= n; i += simd_width) {
+        uint8x16_t a_vec = vld1q_u8(a + i);
+        uint8x16_t b_vec = vld1q_u8(b + i);
+
+        uint16x8_t a_lo = vmovl_u8(vget_low_u8(a_vec));
+        uint16x8_t a_hi = vmovl_u8(vget_high_u8(a_vec));
+        uint16x8_t b_lo = vmovl_u8(vget_low_u8(b_vec));
+        uint16x8_t b_hi = vmovl_u8(vget_high_u8(b_vec));
+
+        uint16x8_t diff_lo = vsubq_u16(a_lo, b_lo);
+        uint16x8_t diff_hi = vsubq_u16(a_hi, b_hi);
+
+        uint32x4_t sq_lo = vmull_u16(vget_low_u16(diff_lo), vget_low_u16(diff_lo));
+        uint32x4_t sq_hi = vmull_u16(vget_high_u16(diff_lo), vget_high_u16(diff_lo));
+        uint32x4_t sq_lo2 = vmull_u16(vget_low_u16(diff_hi), vget_low_u16(diff_hi));
+        uint32x4_t sq_hi2 = vmull_u16(vget_high_u16(diff_hi), vget_high_u16(diff_hi));
+
+        sum_vec = vaddq_u32(sum_vec, sq_lo);
+        sum_vec = vaddq_u32(sum_vec, sq_hi);
+        sum_vec = vaddq_u32(sum_vec, sq_lo2);
+        sum_vec = vaddq_u32(sum_vec, sq_hi2);
+    }
+
+    uint32x2_t sum_lo = vget_low_u32(sum_vec);
+    uint32x2_t sum_hi = vget_high_u32(sum_vec);
+    uint32x2_t sum = vpadd_u32(sum_lo, sum_hi);
+    uint32_t sum_scalar = vget_lane_u32(vpadd_u32(sum, sum), 0);
+
+    for (; i < n; i++) {
+        uint32_t diff = a[i] - b[i];
+        sum_scalar += diff * diff;
+    }
+
+    return sum_scalar;
+}
+
+/* NEON int8 cosine similarity */
+float vek_cosine_i8_neon(const int8_t *a, const int8_t *b, size_t n)
+{
+    const size_t simd_width = 16;
+    size_t i = 0;
+
+    int32x4_t dot_vec = vdupq_n_s32(0);
+    int32x4_t norm_a_vec = vdupq_n_s32(0);
+    int32x4_t norm_b_vec = vdupq_n_s32(0);
+
+    for (; i + simd_width <= n; i += simd_width) {
+        int8x16_t a_vec = vld1q_s8(a + i);
+        int8x16_t b_vec = vld1q_s8(b + i);
+
+        /* dot product */
+        int16x8_t a_lo = vmovl_s8(vget_low_s8(a_vec));
+        int16x8_t a_hi = vmovl_s8(vget_high_s8(a_vec));
+        int16x8_t b_lo = vmovl_s8(vget_low_s8(b_vec));
+        int16x8_t b_hi = vmovl_s8(vget_high_s8(b_vec));
+
+        int32x4_t dot_lo = vmull_s16(vget_low_s16(a_lo), vget_low_s16(b_lo));
+        int32x4_t dot_hi = vmull_s16(vget_high_s16(a_lo), vget_high_s16(b_lo));
+        int32x4_t dot_lo2 = vmull_s16(vget_low_s16(a_hi), vget_low_s16(b_hi));
+        int32x4_t dot_hi2 = vmull_s16(vget_high_s16(a_hi), vget_high_s16(b_hi));
+
+        dot_vec = vaddq_s32(dot_vec, dot_lo);
+        dot_vec = vaddq_s32(dot_vec, dot_hi);
+        dot_vec = vaddq_s32(dot_vec, dot_lo2);
+        dot_vec = vaddq_s32(dot_vec, dot_hi2);
+
+        /* norm a */
+        int32x4_t na_lo = vmull_s16(vget_low_s16(a_lo), vget_low_s16(a_lo));
+        int32x4_t na_hi = vmull_s16(vget_high_s16(a_lo), vget_high_s16(a_lo));
+        int32x4_t na_lo2 = vmull_s16(vget_low_s16(a_hi), vget_low_s16(a_hi));
+        int32x4_t na_hi2 = vmull_s16(vget_high_s16(a_hi), vget_high_s16(a_hi));
+
+        norm_a_vec = vaddq_s32(norm_a_vec, na_lo);
+        norm_a_vec = vaddq_s32(norm_a_vec, na_hi);
+        norm_a_vec = vaddq_s32(norm_a_vec, na_lo2);
+        norm_a_vec = vaddq_s32(norm_a_vec, na_hi2);
+
+        /* norm b */
+        int32x4_t nb_lo = vmull_s16(vget_low_s16(b_lo), vget_low_s16(b_lo));
+        int32x4_t nb_hi = vmull_s16(vget_high_s16(b_lo), vget_high_s16(b_lo));
+        int32x4_t nb_lo2 = vmull_s16(vget_low_s16(b_hi), vget_low_s16(b_hi));
+        int32x4_t nb_hi2 = vmull_s16(vget_high_s16(b_hi), vget_high_s16(b_hi));
+
+        norm_b_vec = vaddq_s32(norm_b_vec, nb_lo);
+        norm_b_vec = vaddq_s32(norm_b_vec, nb_hi);
+        norm_b_vec = vaddq_s32(norm_b_vec, nb_lo2);
+        norm_b_vec = vaddq_s32(norm_b_vec, nb_hi2);
+    }
+
+    /* Horizontal sums */
+    int32x2_t dot_lo = vget_low_s32(dot_vec);
+    int32x2_t dot_hi = vget_high_s32(dot_vec);
+    int32x2_t dot = vpadd_s32(dot_lo, dot_hi);
+    int32_t dot_scalar = vget_lane_s32(vpadd_s32(dot, dot), 0);
+
+    int32x2_t na_lo = vget_low_s32(norm_a_vec);
+    int32x2_t na_hi = vget_high_s32(norm_a_vec);
+    int32x2_t na = vpadd_s32(na_lo, na_hi);
+    int32_t norm_a_scalar = vget_lane_s32(vpadd_s32(na, na), 0);
+
+    int32x2_t nb_lo = vget_low_s32(norm_b_vec);
+    int32x2_t nb_hi = vget_high_s32(norm_b_vec);
+    int32x2_t nb = vpadd_s32(nb_lo, nb_hi);
+    int32_t norm_b_scalar = vget_lane_s32(vpadd_s32(nb, nb), 0);
+
+    for (; i < n; i++) {
+        int32_t ai = a[i];
+        int32_t bi = b[i];
+        dot_scalar += ai * bi;
+        norm_a_scalar += ai * ai;
+        norm_b_scalar += bi * bi;
+    }
+
+    float norm_a_sqrt = sqrtf((float)norm_a_scalar);
+    float norm_b_sqrt = sqrtf((float)norm_b_scalar);
+
+    if (norm_a_sqrt == 0.0f || norm_b_sqrt == 0.0f) {
+        return 0.0f;
+    }
+
+    return (float)dot_scalar / (norm_a_sqrt * norm_b_sqrt);
+}
+
+/* NEON uint8 cosine similarity */
+float vek_cosine_u8_neon(const uint8_t *a, const uint8_t *b, size_t n)
+{
+    const size_t simd_width = 16;
+    size_t i = 0;
+
+    uint32x4_t dot_vec = vdupq_n_u32(0);
+    uint32x4_t norm_a_vec = vdupq_n_u32(0);
+    uint32x4_t norm_b_vec = vdupq_n_u32(0);
+
+    for (; i + simd_width <= n; i += simd_width) {
+        uint8x16_t a_vec = vld1q_u8(a + i);
+        uint8x16_t b_vec = vld1q_u8(b + i);
+
+        /* dot product */
+        uint16x8_t a_lo = vmovl_u8(vget_low_u8(a_vec));
+        uint16x8_t a_hi = vmovl_u8(vget_high_u8(a_vec));
+        uint16x8_t b_lo = vmovl_u8(vget_low_u8(b_vec));
+        uint16x8_t b_hi = vmovl_u8(vget_high_u8(b_vec));
+
+        uint32x4_t dot_lo = vmull_u16(vget_low_u16(a_lo), vget_low_u16(b_lo));
+        uint32x4_t dot_hi = vmull_u16(vget_high_u16(a_lo), vget_high_u16(b_lo));
+        uint32x4_t dot_lo2 = vmull_u16(vget_low_u16(a_hi), vget_low_u16(b_hi));
+        uint32x4_t dot_hi2 = vmull_u16(vget_high_u16(a_hi), vget_high_u16(b_hi));
+
+        dot_vec = vaddq_u32(dot_vec, dot_lo);
+        dot_vec = vaddq_u32(dot_vec, dot_hi);
+        dot_vec = vaddq_u32(dot_vec, dot_lo2);
+        dot_vec = vaddq_u32(dot_vec, dot_hi2);
+
+        /* norm a */
+        uint32x4_t na_lo = vmull_u16(vget_low_u16(a_lo), vget_low_u16(a_lo));
+        uint32x4_t na_hi = vmull_u16(vget_high_u16(a_lo), vget_high_u16(a_lo));
+        uint32x4_t na_lo2 = vmull_u16(vget_low_u16(a_hi), vget_low_u16(a_hi));
+        uint32x4_t na_hi2 = vmull_u16(vget_high_u16(a_hi), vget_high_u16(a_hi));
+
+        norm_a_vec = vaddq_u32(norm_a_vec, na_lo);
+        norm_a_vec = vaddq_u32(norm_a_vec, na_hi);
+        norm_a_vec = vaddq_u32(norm_a_vec, na_lo2);
+        norm_a_vec = vaddq_u32(norm_a_vec, na_hi2);
+
+        /* norm b */
+        uint32x4_t nb_lo = vmull_u16(vget_low_u16(b_lo), vget_low_u16(b_lo));
+        uint32x4_t nb_hi = vmull_u16(vget_high_u16(b_lo), vget_high_u16(b_lo));
+        uint32x4_t nb_lo2 = vmull_u16(vget_low_u16(b_hi), vget_low_u16(b_hi));
+        uint32x4_t nb_hi2 = vmull_u16(vget_high_u16(b_hi), vget_high_u16(b_hi));
+
+        norm_b_vec = vaddq_u32(norm_b_vec, nb_lo);
+        norm_b_vec = vaddq_u32(norm_b_vec, nb_hi);
+        norm_b_vec = vaddq_u32(norm_b_vec, nb_lo2);
+        norm_b_vec = vaddq_u32(norm_b_vec, nb_hi2);
+    }
+
+    /* Horizontal sums */
+    uint32x2_t dot_lo = vget_low_u32(dot_vec);
+    uint32x2_t dot_hi = vget_high_u32(dot_vec);
+    uint32x2_t dot = vpadd_u32(dot_lo, dot_hi);
+    uint32_t dot_scalar = vget_lane_u32(vpadd_u32(dot, dot), 0);
+
+    uint32x2_t na_lo = vget_low_u32(norm_a_vec);
+    uint32x2_t na_hi = vget_high_u32(norm_a_vec);
+    uint32x2_t na = vpadd_u32(na_lo, na_hi);
+    uint32_t norm_a_scalar = vget_lane_u32(vpadd_u32(na, na), 0);
+
+    uint32x2_t nb_lo = vget_low_u32(norm_b_vec);
+    uint32x2_t nb_hi = vget_high_u32(norm_b_vec);
+    uint32x2_t nb = vpadd_u32(nb_lo, nb_hi);
+    uint32_t norm_b_scalar = vget_lane_u32(vpadd_u32(nb, nb), 0);
+
+    for (; i < n; i++) {
+        uint32_t ai = a[i];
+        uint32_t bi = b[i];
+        dot_scalar += ai * bi;
+        norm_a_scalar += ai * ai;
+        norm_b_scalar += bi * bi;
+    }
+
+    float norm_a_sqrt = sqrtf((float)norm_a_scalar);
+    float norm_b_sqrt = sqrtf((float)norm_b_scalar);
+
+    if (norm_a_sqrt == 0.0f || norm_b_sqrt == 0.0f) {
+        return 0.0f;
+    }
+
+    return (float)dot_scalar / (norm_a_sqrt * norm_b_sqrt);
+}

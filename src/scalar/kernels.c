@@ -52,3 +52,85 @@ float vek_cosine_f32_scalar(const float *a, const float *b, size_t n)
 
     return dot / (norm_a_sqrt * norm_b_sqrt);
 }
+
+/* ===== Quantized int8/uint8 scalar reference ===== */
+
+int32_t vek_dot_i8_scalar(const int8_t *a, const int8_t *b, size_t n)
+{
+    int32_t sum = 0;
+    for (size_t i = 0; i < n; i++) {
+        sum += (int32_t)a[i] * (int32_t)b[i];
+    }
+    return sum;
+}
+
+uint32_t vek_dot_u8_scalar(const uint8_t *a, const uint8_t *b, size_t n)
+{
+    uint32_t sum = 0;
+    for (size_t i = 0; i < n; i++) {
+        sum += (uint32_t)a[i] * (uint32_t)b[i];
+    }
+    return sum;
+}
+
+int32_t vek_l2sq_i8_scalar(const int8_t *a, const int8_t *b, size_t n)
+{
+    int32_t sum = 0;
+    for (size_t i = 0; i < n; i++) {
+        int32_t diff = (int32_t)a[i] - (int32_t)b[i];
+        sum += diff * diff;
+    }
+    return sum;
+}
+
+uint32_t vek_l2sq_u8_scalar(const uint8_t *a, const uint8_t *b, size_t n)
+{
+    uint32_t sum = 0;
+    for (size_t i = 0; i < n; i++) {
+        int32_t diff = (int32_t)a[i] - (int32_t)b[i];
+        sum += (uint32_t)(diff * diff);
+    }
+    return sum;
+}
+
+float vek_cosine_i8_scalar(const int8_t *a, const int8_t *b, size_t n)
+{
+    int32_t dot = 0;
+    int32_t norm_a = 0;
+    int32_t norm_b = 0;
+
+    for (size_t i = 0; i < n; i++) {
+        int32_t ai = a[i];
+        int32_t bi = b[i];
+        dot += ai * bi;
+        norm_a += ai * ai;
+        norm_b += bi * bi;
+    }
+
+    if (norm_a == 0 || norm_b == 0) {
+        return 0.0f;
+    }
+
+    return (float)dot / (sqrtf((float)norm_a) * sqrtf((float)norm_b));
+}
+
+float vek_cosine_u8_scalar(const uint8_t *a, const uint8_t *b, size_t n)
+{
+    uint32_t dot = 0;
+    uint32_t norm_a = 0;
+    uint32_t norm_b = 0;
+
+    for (size_t i = 0; i < n; i++) {
+        uint32_t ai = a[i];
+        uint32_t bi = b[i];
+        dot += ai * bi;
+        norm_a += ai * ai;
+        norm_b += bi * bi;
+    }
+
+    if (norm_a == 0 || norm_b == 0) {
+        return 0.0f;
+    }
+
+    return (float)dot / (sqrtf((float)norm_a) * sqrtf((float)norm_b));
+}

@@ -108,7 +108,7 @@ def run_dot_bench():
         else:
             usearch_ns = float('nan')
         
-        # simsimd - use pre-created contiguous arrays
+        # simsimd - use pre-created contiguous arrays (FIXED: use a_c and b_c directly, not lambdas)
         if SIMSIMD_AVAILABLE:
             simsimd_ns = bench_func("simsimd", lambda: simsimd.dot(a_c, b_c), iters)
         else:
