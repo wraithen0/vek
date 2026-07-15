@@ -1,0 +1,44 @@
+.\" vek_backend_name(3) - Get active backend name
+.\" Auto-generated from vek.h
+
+.TH VEK_BACKEND_NAME 3 "2026" "vek 0.7.0" "Library Functions Manual"
+
+.SH NAME
+vek_backend_name \- get name of active SIMD backend
+
+.SH SYNOPSIS
+.B #include <vek.h>
+.PP
+.B const char* vek_backend_name(void);
+
+.SH DESCRIPTION
+.B vek_backend_name()
+returns a string identifying the currently active SIMD backend. The backend
+is selected automatically by \fBvek_init()\fR based on CPU capabilities.
+
+.SH RETURN VALUE
+Returns one of:
+.TP
+.B "scalar"
+Baseline C implementation
+.TP
+.B "sse2"
+Intel SSE2 (128-bit)
+.TP
+.B "avx2"
+Intel AVX2 + FMA (256-bit)
+.TP
+.B "avx512"
+Intel AVX-512F + VNNI + VPOPCNTDQ (512-bit)
+.TP
+.B "neon"
+ARM NEON (128-bit)
+
+.SH EXAMPLE
+.PP
+.B const char *backend = vek_backend_name();
+.PP
+.B printf("Active backend: %s\\n", backend);
+
+.SH SEE ALSO
+vek_init(3), vek_dot_f32(3)

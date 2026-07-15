@@ -1,9 +1,9 @@
 cmake_minimum_required(VERSION 3.16)
-project(vek VERSION 0.5.0 LANGUAGES C)
+project(vek VERSION 0.7.0 LANGUAGES C)
 
 # Project metadata
 set(VEK_VERSION_MAJOR 0)
-set(VEK_VERSION_MINOR 5)
+set(VEK_VERSION_MINOR 7)
 set(VEK_VERSION_PATCH 0)
 
 # C standard
@@ -134,6 +134,7 @@ install(TARGETS vek_static vek_shared
 
 install(FILES include/vek.h DESTINATION include)
 install(FILES LICENSE LICENSE-MIT LICENSE-APACHE DESTINATION share/licenses/vek)
+install(FILES docs/man/vek.3 DESTINATION share/man/man3)
 
 # Generate and install config file
 include(CMakePackageConfigHelpers)

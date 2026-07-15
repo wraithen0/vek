@@ -1,0 +1,152 @@
+.\" vek(3) - Vector Engine Kernels API
+.\" Manual page for VEK library
+
+.TH VEK 3 "2026" "vek 0.7.0" "Library Functions Manual"
+
+.SH NAME
+vek \- Vector Engine Kernels: SIMD-accelerated vector similarity functions
+
+.SH SYNOPSIS
+.B #include <vek.h>
+.PP
+.B int vek_init(void);
+.PP
+.B const char* vek_backend_name(void);
+.PP
+.B float vek_dot_f32(const float *a, const float *b, size_t n);
+.PP
+.B float vek_l2sq_f32(const float *a, const float *b, size_t n);
+.PP
+.B float vek_cosine_f32(const float *a, const float *b, size_t n);
+.PP
+.B int32_t vek_dot_i8(const int8_t *a, const int8_t *b, size_t n);
+.PP
+.B uint32_t vek_dot_u8(const uint8_t *a, const uint8_t *b, size_t n);
+.PP
+.B int32_t vek_l2sq_i8(const int8_t *a, const int8_t *b, size_t n);
+.PP
+.B uint32_t vek_l2sq_u8(const uint8_t *a, const uint8_t *b, size_t n);
+.PP
+.B float vek_cosine_i8(const int8_t *a, const int8_t *b, size_t n);
+.PP
+.B float vek_cosine_u8(const uint8_t *a, const uint8_t *b, size_t n);
+.PP
+.B int32_t vek_dot_b1(const uint64_t *a, const uint64_t *b, size_t n);
+.PP
+.B int32_t vek_hamming_b1(const uint64_t *a, const uint64_t *b, size_t n);
+.PP
+.B float vek_cosine_b1(const uint64_t *a, const uint64_t *b, size_t n);
+
+.SH DESCRIPTION
+.B vek
+is a zero-dependency C library providing SIMD-accelerated vector similarity
+kernels for dot product, squared L2 distance, and cosine similarity. It supports
+f32, int8/uint8 quantized, and binary (1-bit) data types.
+
+The library uses runtime CPU dispatch to select the optimal backend:
+.TP
+.B scalar
+Baseline C implementation (always available)
+.TP
+.B sse2
+Intel SSE2 (128-bit) \- available on all x86_64
+.TP
+.B avx2
+Intel AVX2 + FMA (256-bit) \- Haswell (2013) and later
+.TP
+.B avx512
+Intel AVX-512F + VNNI + VPOPCNTDQ (512-bit) \- Skylake-X (2017) and later
+.TP
+.B neon
+ARM NEON (128-bit) \- ARM64 platforms
+
+.SH INITIALIZATION
+.B vek_init()
+initializes the dispatch table. It is thread-safe (uses pthread_once) and
+idempotent. Most applications don't need to call it explicitly \- it's invoked
+lazily on first API use.
+
+.SH FUNCTIONS
+.SS Core f32 Operations
+.TP
+.B float vek_dot_f32(const float *a, const float *b, size_t n);
+Compute dot product: \fB\fISigma\fP a[i] * b[i]\fP.
+.TP
+.B float vek_l2sq_f32(const float *a, const float *b, size_t n);
+Compute squared L2 distance: \fB\fISigma\fP (a[i] - b[i])^2\fP.
+.TP
+.B float vek_cosine_f32(const float *a, const float *b, size_t n);
+Compute cosine similarity: (a\fB\fI\fIdot\fP\fR b) / (||a|| * ||b||).
+
+.SS Quantized int8/uint8 Operations (v0.5)
+.TP
+.B int32_t vek_dot_i8(const int8_t *a, const int8_t *b, size_t n);
+.TP
+.B uint32_t vek_dot_u8(const uint8_t *a, const uint8_t *b, size_t n);
+.TP
+.B int32_t vek_l2sq_i8(const int8_t *a, const int8_t *b, size_t n);
+.TP
+.B uint32_t vek_l2sq_u8(const uint8_t *a, const uint8_t *b, size_t n);
+.TP
+.B float vek_cosine_i8(const int8_t *a, const int8_t *b, size_t n);
+.TP
+.B float vek_cosine_u8(const uint8_t *a, const uint8_t *b, size_t n);
+
+.SS Binary (1-bit) Operations (v0.6)
+Vectors are packed as uint64_t words (LSB = bit 0).
+.TP
+.B int32_t vek_dot_b1(const uint64_t *a, const uint64_t *b, size_t n);
+Count matching 1-bits (population count of a & b).
+.TP
+.B int32_t vek_hamming_b1(const uint64_t *a, const uint64_t *b, size_t n);
+Hamming distance: population count of a ^ b.
+.TP
+.B float vek_cosine_b1(const uint64_t *a, const uint64_t *b, size_t n);
+Cosine similarity on {0,1} vectors mapped to {-1,+1}.
+
+.SH DISPATCH
+.TP
+.B int vek_init(void);
+Initialize dispatch table. Returns 0 on success.
+.TP
+.B const char* vek_backend_name(void);
+Returns active backend string: "scalar", "sse2", "avx2", "avx512", "neon".
+
+.SH EXAMPLE
+.PP
+.B #include <vek.h>
+.B #include <stdio.h>
+.PP
+.B int main() {
+.PP
+.B     float a[] = {1.0f, 2.0f, 3.0f, 4.0f};
+.B     float b[] = {0.5f, 1.5f, 2.5f, 3.5f};
+.PP
+.B     printf("Backend: %s\\n", vek_backend_name());
+.B     printf("Dot: %.4f\\n", vek_dot_f32(a, b, 4));
+.B     printf("L2sq: %.4f\\n", vek_l2sq_f32(a, b, 4));
+.B     printf("Cosine: %.4f\\n", vek_cosine_f32(a, b, 4));
+.PP
+.B     return 0;
+.PP
+.B }
+
+.SH COMPILING
+.PP
+.B # Makefile (per-ISA flags)
+.B make
+.PP
+.B # CMake
+.B cmake -B build && cmake --build build
+.PP
+.B # Manual (vendored)
+.B gcc -std=c11 -O3 -Iinclude src/scalar/kernels.c src/dispatch.c src/x86/sse2.c src/x86/avx2.c src/x86/avx512.c -o app
+
+.SH SEE ALSO
+vek_init(3), vek_backend_name(3), vek_dot_f32(3)
+
+.SH AUTHORS
+vek contributors
+
+.SH LICENSE
+Dual MIT / Apache-2.0
