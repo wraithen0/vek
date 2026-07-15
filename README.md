@@ -122,33 +122,54 @@ extern "C" {
 
 No crate dependency — just link the compiled `libvek.a` / `vek.dll` / `libvek.so`.
 
-## Benchmarks
+### Quantized Kernels (v0.5)
+
+```c
+// int8/uint8 dot products
+int32_t  vek_dot_i8(const int8_t *a, const int8_t *b, size_t n);
+uint32_t vek_dot_u8(const uint8_t *a, const uint8_t *b, size_t n);
+
+// int8/uint8 squared L2
+int32_t  vek_l2sq_i8(const int8_t *a, const int8_t *b, size_t n);
+uint32_t vek_l2sq_u8(const uint8_t *a, const uint8_t *b, size_t n);
+
+// int8/uint8 cosine
+float vek_cosine_i8(const int8_t *a, const int8_t *b, size_t n);
+float vek_cosine_u8(const uint8_t *a, const uint8_t *b, size_t n);
+```
+
+### Benchmarks (Intel i5-1135G7 @ 2.4 GHz, AVX-512)
 
 Run on your hardware:
-
 ```bash
 make bench
 # Or with custom iterations:
-./bench_kernels 50000
+./bench_kernels 10000
 ```
 
-Example output (Intel i5-1135G7 @ 2.4 GHz, AVX-512):
-
-```text
+Example f32 output (AVX-512 backend):
+```
 === Vector size: 1024 ===
   Kernel               ns/iter     cycles   GFLOP/s   result
-  vek_dot_f32           44.1       132.3     46.4     196.87
-  vek_l2sq_f32          46.7       140.0     43.9     393.74
-  vek_cosine_f32        69.9       209.6     29.3     0.550000
+  vek_dot_f32           87.30       261.91     23.5     196.87
+  vek_l2sq_f32          92.82       278.47     22.1     393.74
+  vek_cosine_f32       140.10       420.31     14.6      0.55
 ```
 
-### Real-world Comparison
-
-Run the comparison yourself:
-
-```bash
-python3 benchmark_compare.py
+Quantized int8/uint8 (AVX-512 VNNI):
 ```
+=== Quantized kernels (n=1024) ===
+  Kernel                  ns/iter    cycles    GOPS/s  result
+  vek_dot_i8               20.04       60.13    102.2     -2931
+  vek_l2sq_i8              60.98      182.95     33.6     -162337
+  vek_dot_u8               20.05       60.15    102.1      426565
+  vek_l2sq_u8              61.83      185.50     33.1      267159
+  vek_cosine_i8            81.86      245.58              0.537
+  vek_cosine_u8            82.29      246.86              0.135
+```
+
+Scalar vs SIMD speedup at n=1024: **23×** (dot), **22×** (L2), **15×** (cosine)  
+Quantized speedup at n=1024: **7.3×** (dot i8), **5.7×** (dot u8), **2.7×** (L2 i8)
 
 This benchmarks `vek` (AVX-512 path on this host) against `simsimd` and NumPy across dot product, L2 distance, and cosine similarity for vector sizes 32–8192.
 

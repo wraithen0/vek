@@ -15,24 +15,59 @@ extern float vek_dot_f32_scalar(const float*, const float*, size_t);
 extern float vek_l2sq_f32_scalar(const float*, const float*, size_t);
 extern float vek_cosine_f32_scalar(const float*, const float*, size_t);
 
+extern int32_t vek_dot_i8_scalar(const int8_t*, const int8_t*, size_t);
+extern uint32_t vek_dot_u8_scalar(const uint8_t*, const uint8_t*, size_t);
+extern int32_t vek_l2sq_i8_scalar(const int8_t*, const int8_t*, size_t);
+extern uint32_t vek_l2sq_u8_scalar(const uint8_t*, const uint8_t*, size_t);
+extern float vek_cosine_i8_scalar(const int8_t*, const int8_t*, size_t);
+extern float vek_cosine_u8_scalar(const uint8_t*, const uint8_t*, size_t);
+
 #if defined(__x86_64__) || defined(_M_X64)
 extern float vek_dot_f32_sse2(const float*, const float*, size_t);
 extern float vek_l2sq_f32_sse2(const float*, const float*, size_t);
 extern float vek_cosine_f32_sse2(const float*, const float*, size_t);
 
+extern int32_t vek_dot_i8_sse2(const int8_t*, const int8_t*, size_t);
+extern uint32_t vek_dot_u8_sse2(const uint8_t*, const uint8_t*, size_t);
+extern int32_t vek_l2sq_i8_sse2(const int8_t*, const int8_t*, size_t);
+extern uint32_t vek_l2sq_u8_sse2(const uint8_t*, const uint8_t*, size_t);
+extern float vek_cosine_i8_sse2(const int8_t*, const int8_t*, size_t);
+extern float vek_cosine_u8_sse2(const uint8_t*, const uint8_t*, size_t);
+
 extern float vek_dot_f32_avx2(const float*, const float*, size_t);
 extern float vek_l2sq_f32_avx2(const float*, const float*, size_t);
 extern float vek_cosine_f32_avx2(const float*, const float*, size_t);
 
+extern int32_t vek_dot_i8_avx2(const int8_t*, const int8_t*, size_t);
+extern uint32_t vek_dot_u8_avx2(const uint8_t*, const uint8_t*, size_t);
+extern int32_t vek_l2sq_i8_avx2(const int8_t*, const int8_t*, size_t);
+extern uint32_t vek_l2sq_u8_avx2(const uint8_t*, const uint8_t*, size_t);
+extern float vek_cosine_i8_avx2(const int8_t*, const int8_t*, size_t);
+extern float vek_cosine_u8_avx2(const uint8_t*, const uint8_t*, size_t);
+
 extern float vek_dot_f32_avx512(const float*, const float*, size_t);
 extern float vek_l2sq_f32_avx512(const float*, const float*, size_t);
 extern float vek_cosine_f32_avx512(const float*, const float*, size_t);
+
+extern int32_t vek_dot_i8_avx512(const int8_t*, const int8_t*, size_t);
+extern uint32_t vek_dot_u8_avx512(const uint8_t*, const uint8_t*, size_t);
+extern int32_t vek_l2sq_i8_avx512(const int8_t*, const int8_t*, size_t);
+extern uint32_t vek_l2sq_u8_avx512(const uint8_t*, const uint8_t*, size_t);
+extern float vek_cosine_i8_avx512(const int8_t*, const int8_t*, size_t);
+extern float vek_cosine_u8_avx512(const uint8_t*, const uint8_t*, size_t);
 #endif
 
 #if defined(__aarch64__) || defined(_M_ARM64)
 extern float vek_dot_f32_neon(const float*, const float*, size_t);
 extern float vek_l2sq_f32_neon(const float*, const float*, size_t);
 extern float vek_cosine_f32_neon(const float*, const float*, size_t);
+
+extern int32_t vek_dot_i8_neon(const int8_t*, const int8_t*, size_t);
+extern uint32_t vek_dot_u8_neon(const uint8_t*, const uint8_t*, size_t);
+extern int32_t vek_l2sq_i8_neon(const int8_t*, const int8_t*, size_t);
+extern uint32_t vek_l2sq_u8_neon(const uint8_t*, const uint8_t*, size_t);
+extern float vek_cosine_i8_neon(const int8_t*, const int8_t*, size_t);
+extern float vek_cosine_u8_neon(const uint8_t*, const uint8_t*, size_t);
 #endif
 
 #define REL_EPS 1e-5f
@@ -48,7 +83,17 @@ static int float_eq_rel(float a, float b, float rel_eps, float abs_eps)
     return diff <= abs_eps || diff <= rel_eps * max_val;
 }
 
-static void test_assert_eq(const char *name, float got, float expected)
+static int int32_eq(int32_t a, int32_t b)
+{
+    return a == b;
+}
+
+static int uint32_eq(uint32_t a, uint32_t b)
+{
+    return a == b;
+}
+
+static void test_assert_eq_f32(const char *name, float got, float expected)
 {
     if (float_eq_rel(got, expected, REL_EPS, ABS_EPS)) {
         printf("  PASS: %s (got %.6f, exp %.6f)\n", name, got, expected);
@@ -60,50 +105,120 @@ static void test_assert_eq(const char *name, float got, float expected)
     }
 }
 
-static void run_basic_tests(const char *backend,
-                            float (*dot_fn)(const float*, const float*, size_t),
-                            float (*l2sq_fn)(const float*, const float*, size_t),
-                            float (*cos_fn)(const float*, const float*, size_t))
+static void test_assert_eq_i32(const char *name, int32_t got, int32_t expected)
 {
-    printf("\n=== %s: Basic correctness ===\n", backend);
+    if (int32_eq(got, expected)) {
+        printf("  PASS: %s (got %d, exp %d)\n", name, got, expected);
+        tests_passed++;
+    } else {
+        printf("  FAIL: %s (got %d, exp %d)\n", name, got, expected);
+        tests_failed++;
+    }
+}
+
+static void test_assert_eq_u32(const char *name, uint32_t got, uint32_t expected)
+{
+    if (uint32_eq(got, expected)) {
+        printf("  PASS: %s (got %u, exp %u)\n", name, got, expected);
+        tests_passed++;
+    } else {
+        printf("  FAIL: %s (got %u, exp %u)\n", name, got, expected);
+        tests_failed++;
+    }
+}
+
+static void run_basic_tests_f32(const char *backend,
+                                float (*dot_fn)(const float*, const float*, size_t),
+                                float (*l2sq_fn)(const float*, const float*, size_t),
+                                float (*cos_fn)(const float*, const float*, size_t))
+{
+    printf("\n=== %s: Basic f32 correctness ===\n", backend);
 
     /* Test 1: Zero vectors */
     float a1[] = {0, 0, 0};
     float b1[] = {0, 0, 0};
-    test_assert_eq("dot zero", dot_fn(a1, b1, 3), 0.0f);
-    test_assert_eq("l2sq zero", l2sq_fn(a1, b1, 3), 0.0f);
-    test_assert_eq("cosine zero", cos_fn(a1, b1, 3), 0.0f);
+    test_assert_eq_f32("dot zero", dot_fn(a1, b1, 3), 0.0f);
+    test_assert_eq_f32("l2sq zero", l2sq_fn(a1, b1, 3), 0.0f);
+    test_assert_eq_f32("cosine zero", cos_fn(a1, b1, 3), 0.0f);
 
     /* Test 2: Identical vectors */
     float a2[] = {1.0f, 2.0f, 3.0f};
     float b2[] = {1.0f, 2.0f, 3.0f};
-    test_assert_eq("dot identical", dot_fn(a2, b2, 3), 14.0f);
-    test_assert_eq("l2sq identical", l2sq_fn(a2, b2, 3), 0.0f);
-    test_assert_eq("cosine identical", cos_fn(a2, b2, 3), 1.0f);
+    test_assert_eq_f32("dot identical", dot_fn(a2, b2, 3), 14.0f);
+    test_assert_eq_f32("l2sq identical", l2sq_fn(a2, b2, 3), 0.0f);
+    test_assert_eq_f32("cosine identical", cos_fn(a2, b2, 3), 1.0f);
 
     /* Test 3: Orthogonal vectors */
     float a3[] = {1.0f, 0.0f};
     float b3[] = {0.0f, 1.0f};
-    test_assert_eq("dot orthogonal", dot_fn(a3, b3, 2), 0.0f);
-    test_assert_eq("cosine orthogonal", cos_fn(a3, b3, 2), 0.0f);
+    test_assert_eq_f32("dot orthogonal", dot_fn(a3, b3, 2), 0.0f);
+    test_assert_eq_f32("cosine orthogonal", cos_fn(a3, b3, 2), 0.0f);
 
     /* Test 4: Opposite vectors */
     float a4[] = {1.0f, 2.0f};
     float b4[] = {-1.0f, -2.0f};
-    test_assert_eq("dot opposite", dot_fn(a4, b4, 2), -5.0f);
-    test_assert_eq("cosine opposite", cos_fn(a4, b4, 2), -1.0f);
+    test_assert_eq_f32("dot opposite", dot_fn(a4, b4, 2), -5.0f);
+    test_assert_eq_f32("cosine opposite", cos_fn(a4, b4, 2), -1.0f);
 
     /* Test 5: Linear scaling property */
     float a5[] = {2.0f, 3.0f, 4.0f};
     float b5[] = {5.0f, 6.0f, 7.0f};
-    test_assert_eq("dot linear scaling", dot_fn(a5, b5, 3), 56.0f);
+    test_assert_eq_f32("dot linear scaling", dot_fn(a5, b5, 3), 56.0f);
 }
 
-static void run_random_tests(const char *backend,
-                             float (*l2sq_fn)(const float*, const float*, size_t),
-                             float (*cos_fn)(const float*, const float*, size_t))
+static void run_basic_tests_i8(const char *backend,
+                               int32_t (*dot_fn)(const int8_t*, const int8_t*, size_t),
+                               int32_t (*l2sq_fn)(const int8_t*, const int8_t*, size_t),
+                               float (*cos_fn)(const int8_t*, const int8_t*, size_t))
 {
-    printf("\n=== %s: Random vectors ===\n", backend);
+    printf("\n=== %s: Basic int8 correctness ===\n", backend);
+
+    int8_t a1[] = {1, 2, 3};
+    int8_t b1[] = {1, 2, 3};
+    test_assert_eq_i32("dot i8 identical", dot_fn(a1, b1, 3), 14);
+    test_assert_eq_i32("l2sq i8 identical", l2sq_fn(a1, b1, 3), 0);
+    test_assert_eq_f32("cosine i8 identical", cos_fn(a1, b1, 3), 1.0f);
+
+    int8_t a2[] = {-1, 2, -3};
+    int8_t b2[] = {1, -2, 3};
+    test_assert_eq_i32("dot i8 opposite", dot_fn(a2, b2, 3), -14);
+    test_assert_eq_f32("cosine i8 opposite", cos_fn(a2, b2, 3), -1.0f);
+
+    int8_t a3[] = {1, 0};
+    int8_t b3[] = {0, 1};
+    test_assert_eq_i32("dot i8 orthogonal", dot_fn(a3, b3, 2), 0);
+    test_assert_eq_f32("cosine i8 orthogonal", cos_fn(a3, b3, 2), 0.0f);
+}
+
+static void run_basic_tests_u8(const char *backend,
+                               uint32_t (*dot_fn)(const uint8_t*, const uint8_t*, size_t),
+                               uint32_t (*l2sq_fn)(const uint8_t*, const uint8_t*, size_t),
+                               float (*cos_fn)(const uint8_t*, const uint8_t*, size_t))
+{
+    printf("\n=== %s: Basic uint8 correctness ===\n", backend);
+
+    uint8_t a1[] = {1, 2, 3};
+    uint8_t b1[] = {1, 2, 3};
+    test_assert_eq_u32("dot u8 identical", dot_fn(a1, b1, 3), 14);
+    test_assert_eq_u32("l2sq u8 identical", l2sq_fn(a1, b1, 3), 0);
+    test_assert_eq_f32("cosine u8 identical", cos_fn(a1, b1, 3), 1.0f);
+
+    uint8_t a2[] = {255, 1, 100};
+    uint8_t b2[] = {1, 255, 100};
+    test_assert_eq_u32("dot u8 mixed", dot_fn(a2, b2, 3), 255*1 + 1*255 + 100*100);
+    test_assert_eq_u32("l2sq u8 mixed", l2sq_fn(a2, b2, 3), (254*254) + (254*254) + 0);
+
+    uint8_t a3[] = {1, 0};
+    uint8_t b3[] = {0, 1};
+    test_assert_eq_u32("dot u8 orthogonal", dot_fn(a3, b3, 2), 0);
+    test_assert_eq_f32("cosine u8 orthogonal", cos_fn(a3, b3, 2), 0.0f);
+}
+
+static void run_random_tests_f32(const char *backend,
+                                 float (*l2sq_fn)(const float*, const float*, size_t),
+                                 float (*cos_fn)(const float*, const float*, size_t))
+{
+    printf("\n=== %s: Random f32 vectors ===\n", backend);
     srand(0xC0FFEE);
 
     for (size_t n = 1; n <= 100; n++) {
@@ -157,32 +272,32 @@ static void run_random_tests(const char *backend,
         free(b);
     }
 
-    printf("%s random tests: %d passed, %d failed\n", backend, tests_passed, tests_failed);
+    printf("%s f32 random tests: %d passed, %d failed\n", backend, tests_passed, tests_failed);
 }
 
-static void run_edge_cases(const char *backend,
-                           float (*dot_fn)(const float*, const float*, size_t),
-                           float (*l2sq_fn)(const float*, const float*, size_t),
-                           float (*cos_fn)(const float*, const float*, size_t))
+static void run_edge_cases_f32(const char *backend,
+                               float (*dot_fn)(const float*, const float*, size_t),
+                               float (*l2sq_fn)(const float*, const float*, size_t),
+                               float (*cos_fn)(const float*, const float*, size_t))
 {
-    printf("\n=== %s: Edge cases ===\n", backend);
+    printf("\n=== %s: f32 Edge cases ===\n", backend);
 
     /* n=1 */
     float a1[] = {5.0f};
     float b1[] = {3.0f};
-    test_assert_eq("n=1 dot", dot_fn(a1, b1, 1), 15.0f);
-    test_assert_eq("n=1 l2sq", l2sq_fn(a1, b1, 1), 4.0f);
-    test_assert_eq("n=1 cosine", cos_fn(a1, b1, 1), 1.0f);
+    test_assert_eq_f32("n=1 dot", dot_fn(a1, b1, 1), 15.0f);
+    test_assert_eq_f32("n=1 l2sq", l2sq_fn(a1, b1, 1), 4.0f);
+    test_assert_eq_f32("n=1 cosine", cos_fn(a1, b1, 1), 1.0f);
 
     /* n=0 */
-    test_assert_eq("n=0 dot", dot_fn(a1, b1, 0), 0.0f);
-    test_assert_eq("n=0 l2sq", l2sq_fn(a1, b1, 0), 0.0f);
-    test_assert_eq("n=0 cosine", cos_fn(a1, b1, 0), 0.0f);
+    test_assert_eq_f32("n=0 dot", dot_fn(a1, b1, 0), 0.0f);
+    test_assert_eq_f32("n=0 l2sq", l2sq_fn(a1, b1, 0), 0.0f);
+    test_assert_eq_f32("n=0 cosine", cos_fn(a1, b1, 0), 0.0f);
 
     /* Zero vs non-zero */
     float a0[] = {0, 0, 0};
     float b0[] = {1, 2, 3};
-    test_assert_eq("zero/non-zero cosine", cos_fn(a0, b0, 3), 0.0f);
+    test_assert_eq_f32("zero/non-zero cosine", cos_fn(a0, b0, 3), 0.0f);
 
     /* NaN propagation */
     float anan[] = {NAN, 1.0f};
@@ -206,7 +321,7 @@ static void run_edge_cases(const char *backend,
         tests_passed++;
     }
 
-    printf("%s edge cases: %d passed, %d failed\n", backend, tests_passed, tests_failed);
+    printf("%s f32 edge cases: %d passed, %d failed\n", backend, tests_passed, tests_failed);
 }
 
 static void test_deterministic(const char *backend,
@@ -233,83 +348,88 @@ static void test_deterministic(const char *backend,
     }
 }
 
-static void test_symmetry(const char *backend,
-                          float (*dot_fn)(const float*, const float*, size_t),
-                          float (*l2sq_fn)(const float*, const float*, size_t),
-                          float (*cos_fn)(const float*, const float*, size_t))
+static void test_symmetry_f32(const char *backend,
+                              float (*dot_fn)(const float*, const float*, size_t),
+                              float (*l2sq_fn)(const float*, const float*, size_t),
+                              float (*cos_fn)(const float*, const float*, size_t))
 {
-    printf("\n=== %s: Symmetry ===\n", backend);
+    printf("\n=== %s: f32 Symmetry ===\n", backend);
 
     float a[] = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f};
     float b[] = {2.0f, 3.0f, 1.0f, 5.0f, 4.0f};
 
-    test_assert_eq("dot symmetry", dot_fn(a, b, 5), dot_fn(b, a, 5));
-    test_assert_eq("l2sq symmetry", l2sq_fn(a, b, 5), l2sq_fn(b, a, 5));
-    test_assert_eq("cosine symmetry", cos_fn(a, b, 5), cos_fn(b, a, 5));
+    test_assert_eq_f32("dot symmetry", dot_fn(a, b, 5), dot_fn(b, a, 5));
+    test_assert_eq_f32("l2sq symmetry", l2sq_fn(a, b, 5), l2sq_fn(b, a, 5));
+    test_assert_eq_f32("cosine symmetry", cos_fn(a, b, 5), cos_fn(b, a, 5));
 }
 
-static void test_cosine_properties(const char *backend,
-                                   float (*cos_fn)(const float*, const float*, size_t))
+static void test_cosine_properties_f32(const char *backend,
+                                       float (*cos_fn)(const float*, const float*, size_t))
 {
-    printf("\n=== %s: Cosine properties ===\n", backend);
+    printf("\n=== %s: f32 Cosine properties ===\n", backend);
 
     float a[] = {1.0f, 2.0f, 3.0f, 4.0f};
-    test_assert_eq("cos(a,a)==1", cos_fn(a, a, 4), 1.0f);
+    test_assert_eq_f32("cos(a,a)==1", cos_fn(a, a, 4), 1.0f);
 
     float neg_a[] = {-1.0f, -2.0f, -3.0f, -4.0f};
-    test_assert_eq("cos(a,-a)==-1", cos_fn(a, neg_a, 4), -1.0f);
+    test_assert_eq_f32("cos(a,-a)==-1", cos_fn(a, neg_a, 4), -1.0f);
 
     float b[] = {4.0f, 3.0f, 2.0f, 1.0f};
-    test_assert_eq("cos symmetry", cos_fn(a, b, 4), cos_fn(b, a, 4));
+    test_assert_eq_f32("cos symmetry", cos_fn(a, b, 4), cos_fn(b, a, 4));
 
     float ca[] = {2.0f, 4.0f, 6.0f, 8.0f};
-    test_assert_eq("cos scale invar", cos_fn(a, b, 4), cos_fn(ca, b, 4));
+    test_assert_eq_f32("cos scale invar", cos_fn(a, b, 4), cos_fn(ca, b, 4));
 }
+
+/* Generic test runner for a backend */
+#define RUN_BACKEND_TESTS(name, dot_f32, l2sq_f32, cos_f32, \
+                           dot_i8, l2sq_i8, cos_i8, \
+                           dot_u8, l2sq_u8, cos_u8) \
+    do { \
+        run_basic_tests_f32(#name, dot_f32, l2sq_f32, cos_f32); \
+        run_random_tests_f32(#name, l2sq_f32, cos_f32); \
+        run_edge_cases_f32(#name, dot_f32, l2sq_f32, cos_f32); \
+        test_deterministic(#name, dot_f32); \
+        test_symmetry_f32(#name, dot_f32, l2sq_f32, cos_f32); \
+        test_cosine_properties_f32(#name, cos_f32); \
+        run_basic_tests_i8(#name, dot_i8, l2sq_i8, cos_i8); \
+        run_basic_tests_u8(#name, dot_u8, l2sq_u8, cos_u8); \
+    } while (0)
 
 int main(void)
 {
     /* Test scalar (always available) */
-    run_basic_tests("scalar", vek_dot_f32_scalar, vek_l2sq_f32_scalar, vek_cosine_f32_scalar);
-    run_random_tests("scalar", vek_l2sq_f32_scalar, vek_cosine_f32_scalar);
-    run_edge_cases("scalar", vek_dot_f32_scalar, vek_l2sq_f32_scalar, vek_cosine_f32_scalar);
-    test_deterministic("scalar", vek_dot_f32_scalar);
-    test_symmetry("scalar", vek_dot_f32_scalar, vek_l2sq_f32_scalar, vek_cosine_f32_scalar);
-    test_cosine_properties("scalar", vek_cosine_f32_scalar);
+    RUN_BACKEND_TESTS(scalar,
+        vek_dot_f32_scalar, vek_l2sq_f32_scalar, vek_cosine_f32_scalar,
+        vek_dot_i8_scalar, vek_l2sq_i8_scalar, vek_cosine_i8_scalar,
+        vek_dot_u8_scalar, vek_l2sq_u8_scalar, vek_cosine_u8_scalar);
 
 #if defined(__x86_64__) || defined(_M_X64)
     /* Test SSE2 */
-    run_basic_tests("sse2", vek_dot_f32_sse2, vek_l2sq_f32_sse2, vek_cosine_f32_sse2);
-    run_random_tests("sse2", vek_l2sq_f32_sse2, vek_cosine_f32_sse2);
-    run_edge_cases("sse2", vek_dot_f32_sse2, vek_l2sq_f32_sse2, vek_cosine_f32_sse2);
-    test_deterministic("sse2", vek_dot_f32_sse2);
-    test_symmetry("sse2", vek_dot_f32_sse2, vek_l2sq_f32_sse2, vek_cosine_f32_sse2);
-    test_cosine_properties("sse2", vek_cosine_f32_sse2);
+    RUN_BACKEND_TESTS(sse2,
+        vek_dot_f32_sse2, vek_l2sq_f32_sse2, vek_cosine_f32_sse2,
+        vek_dot_i8_sse2, vek_l2sq_i8_sse2, vek_cosine_i8_sse2,
+        vek_dot_u8_sse2, vek_l2sq_u8_sse2, vek_cosine_u8_sse2);
 
     /* Test AVX2 */
-    run_basic_tests("avx2", vek_dot_f32_avx2, vek_l2sq_f32_avx2, vek_cosine_f32_avx2);
-    run_random_tests("avx2", vek_l2sq_f32_avx2, vek_cosine_f32_avx2);
-    run_edge_cases("avx2", vek_dot_f32_avx2, vek_l2sq_f32_avx2, vek_cosine_f32_avx2);
-    test_deterministic("avx2", vek_dot_f32_avx2);
-    test_symmetry("avx2", vek_dot_f32_avx2, vek_l2sq_f32_avx2, vek_cosine_f32_avx2);
-    test_cosine_properties("avx2", vek_cosine_f32_avx2);
+    RUN_BACKEND_TESTS(avx2,
+        vek_dot_f32_avx2, vek_l2sq_f32_avx2, vek_cosine_f32_avx2,
+        vek_dot_i8_avx2, vek_l2sq_i8_avx2, vek_cosine_i8_avx2,
+        vek_dot_u8_avx2, vek_l2sq_u8_avx2, vek_cosine_u8_avx2);
 
     /* Test AVX-512 */
-    run_basic_tests("avx512", vek_dot_f32_avx512, vek_l2sq_f32_avx512, vek_cosine_f32_avx512);
-    run_random_tests("avx512", vek_l2sq_f32_avx512, vek_cosine_f32_avx512);
-    run_edge_cases("avx512", vek_dot_f32_avx512, vek_l2sq_f32_avx512, vek_cosine_f32_avx512);
-    test_deterministic("avx512", vek_dot_f32_avx512);
-    test_symmetry("avx512", vek_dot_f32_avx512, vek_l2sq_f32_avx512, vek_cosine_f32_avx512);
-    test_cosine_properties("avx512", vek_cosine_f32_avx512);
+    RUN_BACKEND_TESTS(avx512,
+        vek_dot_f32_avx512, vek_l2sq_f32_avx512, vek_cosine_f32_avx512,
+        vek_dot_i8_avx512, vek_l2sq_i8_avx512, vek_cosine_i8_avx512,
+        vek_dot_u8_avx512, vek_l2sq_u8_avx512, vek_cosine_u8_avx512);
 #endif
 
 #if defined(__aarch64__) || defined(_M_ARM64)
     /* Test NEON */
-    run_basic_tests("neon", vek_dot_f32_neon, vek_l2sq_f32_neon, vek_cosine_f32_neon);
-    run_random_tests("neon", vek_dot_f32_neon, vek_l2sq_f32_neon, vek_cosine_f32_neon);
-    run_edge_cases("neon", vek_dot_f32_neon, vek_l2sq_f32_neon, vek_cosine_f32_neon);
-    test_deterministic("neon", vek_dot_f32_neon);
-    test_symmetry("neon", vek_dot_f32_neon, vek_l2sq_f32_neon, vek_cosine_f32_neon);
-    test_cosine_properties("neon", vek_cosine_f32_neon);
+    RUN_BACKEND_TESTS(neon,
+        vek_dot_f32_neon, vek_l2sq_f32_neon, vek_cosine_f32_neon,
+        vek_dot_i8_neon, vek_l2sq_i8_neon, vek_cosine_i8_neon,
+        vek_dot_u8_neon, vek_l2sq_u8_neon, vek_cosine_u8_neon);
 #endif
 
     printf("\n=== OVERALL SUMMARY ===\n");
