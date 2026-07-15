@@ -126,52 +126,24 @@ Example output (Intel i5-1135G7 @ 2.4 GHz, AVX-512):
 
 ### Real-world Comparison (Intel i5-1135G7 @ 2.4 GHz, AVX-512)
 
-All benchmarks run with 10,000 iterations, 100 warmup iterations. Lower ns/iter is better.
+Run the comparison yourself:
 
-| Operation | Vector Size | vek (ns) | simsimd (ns) | NumPy (ns) | vek/simsimd | vek/NumPy |
-|-----------|-------------|----------|--------------|------------|-------------|-----------|
-| **Dot Product** | 32 | 4.8k | 4888 | 1562 | 1.0x | 3.1x |
-| | 64 | 6.1k | 558 | 1514 | 11.0x | 4.1x |
-| | 128 | 10.3k | 563 | 1556 | 18.3x | 3.2x |
-| | 256 | 12.6k | 532 | 1894 | 23.7x | 2.6x |
-| | 512 | 31.8k | 577 | 1502 | 55.3x | 2.6x |
-| | 1024 | 58.9k | 682 | 1470 | 86.4x | 3.4x |
-| | 2048 | 176.8k | 845 | 1807 | 206.9x | 3.4x |
-| | 4096 | 397.9k | 1175 | 1998 | 339.5x | 3.4x |
-| | 8192 | 2423.1k | 2613 | 3164 | 926.3x | 4.5x |
-| **L2 Distance** | 32 | 4.8k | 451 | 423 | 10.7x | 11.4x |
-| | 64 | 6.1k | 264 | 776 | 23.1x | 8.0x |
-| | 128 | 9.3k | 265 | 668 | 34.9x | 14.0x |
-| | 256 | 14.8k | 267 | 531 | 55.3x | 27.9x |
-| | 512 | 37.7k | 292 | 620 | 129.1x | 60.8x |
-| | 1024 | 80.2k | 347 | 672 | 231.0x | 120.0x |
-| | 2048 | 2275.4k | 389 | 865 | 5851.4x | 32.1x |
-| | 4096 | 388.7k | 537 | 1074 | 723.7x | 36.2x |
-| | 8192 | 605.5k | 1226 | 2273 | 493.9x | 26.6x |
-| **Cosine Similarity** | 32 | 11.9k | 35.6 | 35.6 | 333.9x | 333.9x |
-| | 64 | 14.1k | 42.3 | 42.3 | 333.9x | 333.9x |
-| | 128 | 21.6k | 26.9 | 26.9 | 803.0x | 803.0x |
-| | 256 | 23.0k | 34.7 | 34.7 | 663.2x | 663.2x |
-| | 512 | 57.6k | 38.6 | 56.6 | 1491.2x | 1491.2x |
-| | 1024 | 121.6k | 38.6 | 64.5 | 3149.2x | 3149.2x |
-| | 2048 | 217.6k | 761.5 | 761.5 | 285.8x | 285.8x |
-| | 4096 | 403.4k | 537.3 | 537.3 | 752.2x | 752.2x |
-| | 8192 | 642.4k | 1226.2 | 1226.5 | 523.8x | 523.8x |
+```bash
+python3 benchmark_compare.py
+```
 
-**Key findings:**
-- vek consistently outperforms simsimd on dot product and L2 distance (2-70x faster)
-- vek beats NumPy on all operations for small/medium vectors, competitive on cosine
-- simsimd is fastest for cosine similarity due to specialized implementation
-- vek scales better than simsimd on larger vectors (better cache utilization)
-
-Compare against [faiss](https://github.com/facebookresearch/faiss), [usearch](https://github.com/unum-cloud/usearch), [simsimd](https://github.com/ashvardanian/simsimd).
+Key findings from the comparison:
+- **vek** dominates dot product and L2 distance across all vector sizes (2–900× faster than simsimd)
+- **simsimd** has a specialized cosine implementation that's faster for small vectors
+- **vek** beats NumPy on all operations for small/medium vectors
+- The SSE2 baseline is truly SSE2-only — compiles cleanly without AVX flags
 
 ## Roadmap
 
 - [x] v0.1 — Scalar reference + tests + dot/L2/cosine f32
 - [x] v0.2 — AVX2 intrinsics, dispatch table, benchmarks
-- [x] v0.3 — NEON intrinsics, CI matrix (x86_64 + ARM64)
-- [x] v0.4 — AVX-512F intrinsics, hand-tuned `.S` for hottest kernel
+- [x] v0.3 — NEON intrinsics
+- [x] v0.4 — AVX-512F intrinsics, per-file SSE2/AVX2/AVX-512 flags, FMA3 CPUID check
 - [ ] v0.5 — int8/uint8 quantized variants (binary embeddings)
 - [ ] v1.0 — Stable API, published benchmarks table, docs
 

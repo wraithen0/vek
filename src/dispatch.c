@@ -157,6 +157,10 @@ static int cpu_has_avx2_runtime(void)
 {
     if (!cpu_has_osxsave() || !xgetbv_supported()) return 0;
     if (!cpu_has_avx() || !cpu_has_avx2()) return 0;
+    /* Check FMA3 support (required by avx2.c's _mm256_fmadd_ps) */
+    uint32_t eax, ebx, ecx, edx;
+    cpuid(1, 0, &eax, &ebx, &ecx, &edx);
+    if (!(ecx & (1u << 12))) return 0; /* FMA3 bit */
     uint64_t xcr0 = xgetbv();
     return (xcr0 & 0x6) == 0x6; /* XMM and YMM state saved */
 }

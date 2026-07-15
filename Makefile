@@ -11,9 +11,10 @@ UNAME_S := $(shell uname -s)
 
 # Detect x86_64
 ifeq ($(UNAME_M),x86_64)
-    CFLAGS_X86 = -msse2 -mavx -mavx2 -mfma
+    CFLAGS_SSE2 = -msse2
+    CFLAGS_AVX2 = -msse2 -mavx -mavx2 -mfma
     ifeq ($(UNAME_S),Linux)
-        CFLAGS_AVX512 = -mavx512f -mavx512vl -mavx512bw -mavx512dq
+        CFLAGS_AVX512 = -msse2 -mavx -mavx2 -mfma -mavx512f -mavx512vl -mavx512bw -mavx512dq
     endif
 endif
 
@@ -88,14 +89,14 @@ $(OBJ_DISPATCH): $(SRC_DISPATCH) include/vek.h
 # x86_64 targets
 ifeq ($(UNAME_M),x86_64)
 $(OBJ_X86_SSE2): $(SRC_X86_SSE2) include/vek.h
-	$(CC) $(CFLAGS) $(CFLAGS_X86) -c $< -o $@
+	$(CC) $(CFLAGS) $(CFLAGS_SSE2) -c $< -o $@
 
 $(OBJ_X86_AVX2): $(SRC_X86_AVX2) include/vek.h
-	$(CC) $(CFLAGS) $(CFLAGS_X86) -c $< -o $@
+	$(CC) $(CFLAGS) $(CFLAGS_AVX2) -c $< -o $@
 
 ifneq ($(CFLAGS_AVX512),)
 $(OBJ_X86_AVX512): $(SRC_X86_AVX512) include/vek.h
-	$(CC) $(CFLAGS) $(CFLAGS_X86) $(CFLAGS_AVX512) -c $< -o $@
+	$(CC) $(CFLAGS) $(CFLAGS_AVX512) -c $< -o $@
 endif
 endif
 
