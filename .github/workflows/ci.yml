@@ -65,10 +65,26 @@ jobs:
         run: cmake --build build --config Release --parallel
 
       - name: Test
-        run: ctest --test-dir build --output-on-failure
+        run: |
+          cd build
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            ./test_kernels.exe
+            ./test_backends.exe
+          else
+            LD_LIBRARY_PATH=./lib ./test_kernels
+            LD_LIBRARY_PATH=./lib ./test_backends
+          fi
+        shell: bash
 
       - name: Run benchmarks
-        run: ./build/bin/bench_kernels 5000
+        run: |
+          cd build
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            ./bench_kernels.exe 5000
+          else
+            LD_LIBRARY_PATH=./lib ./bench_kernels 5000
+          fi
+        shell: bash
 
   # Release job: create release assets on tag push
   release:
