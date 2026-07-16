@@ -68,14 +68,14 @@ jobs:
         run: |
           cd build
           if [ "$RUNNER_OS" = "Windows" ]; then
-            ./test_kernels.exe
-            ./test_backends.exe
+            ./bin/test_kernels.exe
+            ./bin/test_backends.exe
           elif [ "$RUNNER_OS" = "macOS" ]; then
-            DYLD_LIBRARY_PATH=./lib ./test_kernels
-            DYLD_LIBRARY_PATH=./lib ./test_backends
+            DYLD_LIBRARY_PATH=./lib ./bin/test_kernels
+            DYLD_LIBRARY_PATH=./lib ./bin/test_backends
           else
-            LD_LIBRARY_PATH=./lib ./test_kernels
-            LD_LIBRARY_PATH=./lib ./test_backends
+            LD_LIBRARY_PATH=./lib ./bin/test_kernels
+            LD_LIBRARY_PATH=./lib ./bin/test_backends
           fi
         shell: bash
 
@@ -83,11 +83,11 @@ jobs:
         run: |
           cd build
           if [ "$RUNNER_OS" = "Windows" ]; then
-            ./bench_kernels.exe 5000
+            ./bin/bench_kernels.exe 5000
           elif [ "$RUNNER_OS" = "macOS" ]; then
-            DYLD_LIBRARY_PATH=./lib ./bench_kernels 5000
+            DYLD_LIBRARY_PATH=./lib ./bin/bench_kernels 5000
           else
-            LD_LIBRARY_PATH=./lib ./bench_kernels 5000
+            LD_LIBRARY_PATH=./lib ./bin/bench_kernels 5000
           fi
         shell: bash
 
