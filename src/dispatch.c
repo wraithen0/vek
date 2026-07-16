@@ -192,6 +192,20 @@ static int cpu_has_avx512f(void)
     return (ebx & (1u << 16)) != 0; /* AVX-512F bit */
 }
 
+static int cpu_has_avx512vnni(void)
+{
+    uint32_t eax, ebx, ecx, edx;
+    cpuid(7, 0, &eax, &ebx, &ecx, &edx);
+    return (ecx & (1u << 11)) != 0; /* AVX-512 VNNI bit */
+}
+
+static int cpu_has_avx512vpopcntdq(void)
+{
+    uint32_t eax, ebx, ecx, edx;
+    cpuid(7, 0, &eax, &ebx, &ecx, &edx);
+    return (ecx & (1u << 14)) != 0; /* AVX-512 VPOPCNTDQ bit */
+}
+
 static int cpu_has_avx(void)
 {
     uint32_t eax, ebx, ecx, edx;
@@ -240,6 +254,8 @@ static int cpu_has_avx512f_runtime(void)
 {
     if (!cpu_has_osxsave() || !xgetbv_supported()) return 0;
     if (!cpu_has_avx() || !cpu_has_avx2() || !cpu_has_avx512f()) return 0;
+    /* AVX-512 kernels use VNNI (dpbusd) and VPOPCNTDQ (vpopcntq) — require both */
+    if (!cpu_has_avx512vnni() || !cpu_has_avx512vpopcntdq()) return 0;
     uint64_t xcr0 = xgetbv();
     return (xcr0 & 0xe6) == 0xe6; /* XMM, YMM, ZMM, opmask state saved */
 }

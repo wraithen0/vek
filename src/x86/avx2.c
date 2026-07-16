@@ -135,8 +135,7 @@ float vek_cosine_f32_avx2(const float *a, const float *b, size_t n)
 
 /* ===== Quantized int8/uint8 variants (AVX2) ===== */
 
-/* AVX2 int8 dot product using _mm256_dpbusd_epi32 (AVX512-VNNI instruction - not in AVX2) */
-/* For AVX2, we use _mm256_maddubs_epi16 + _mm256_madd_epi16 */
+/* AVX2 int8 dot product: sign-extend int8→int16, multiply int16×int16→int32, sum */
 int32_t vek_dot_i8_avx2(const int8_t *a, const int8_t *b, size_t n)
 {
     const size_t simd_width = 32; /* 256-bit = 32 int8 */
@@ -148,13 +147,22 @@ int32_t vek_dot_i8_avx2(const int8_t *a, const int8_t *b, size_t n)
         __m256i a_vec = _mm256_loadu_si256((const __m256i*)(a + i));
         __m256i b_vec = _mm256_loadu_si256((const __m256i*)(b + i));
 
-        /* Convert signed to unsigned for maddubs */
-        __m256i a_u8 = _mm256_sub_epi8(a_vec, _mm256_set1_epi8(-128));
-        __m256i b_u8 = _mm256_sub_epi8(b_vec, _mm256_set1_epi8(-128));
-        __m256i prod16 = _mm256_maddubs_epi16(a_u8, b_u8);
+        /* Sign-extend int8 to int16 (lower 128 bits) */
+        __m128i a_lo128 = _mm256_castsi256_si128(a_vec);
+        __m128i a_hi128 = _mm256_extracti128_si256(a_vec, 1);
+        __m256i a_lo = _mm256_cvtepi8_epi16(a_lo128);
+        __m256i a_hi = _mm256_cvtepi8_epi16(a_hi128);
 
-        __m256i sum32 = _mm256_madd_epi16(prod16, _mm256_set1_epi16(1));
-        sum_vec = _mm256_add_epi32(sum_vec, sum32);
+        __m128i b_lo128 = _mm256_castsi256_si128(b_vec);
+        __m128i b_hi128 = _mm256_extracti128_si256(b_vec, 1);
+        __m256i b_lo = _mm256_cvtepi8_epi16(b_lo128);
+        __m256i b_hi = _mm256_cvtepi8_epi16(b_hi128);
+
+        /* Multiply int16 × int16 → int32, accumulate */
+        __m256i sum_lo = _mm256_madd_epi16(a_lo, b_lo);
+        __m256i sum_hi = _mm256_madd_epi16(a_hi, b_hi);
+        sum_vec = _mm256_add_epi32(sum_vec, sum_lo);
+        sum_vec = _mm256_add_epi32(sum_vec, sum_hi);
     }
 
     /* Horizontal sum of 8x 32-bit integers */
@@ -173,7 +181,7 @@ int32_t vek_dot_i8_avx2(const int8_t *a, const int8_t *b, size_t n)
     return sum_scalar;
 }
 
-/* AVX2 uint8 dot product */
+/* AVX2 uint8 dot product: zero-extend uint8→uint16, multiply uint16×uint16→uint32, sum */
 uint32_t vek_dot_u8_avx2(const uint8_t *a, const uint8_t *b, size_t n)
 {
     const size_t simd_width = 32;
@@ -185,11 +193,25 @@ uint32_t vek_dot_u8_avx2(const uint8_t *a, const uint8_t *b, size_t n)
         __m256i a_vec = _mm256_loadu_si256((const __m256i*)(a + i));
         __m256i b_vec = _mm256_loadu_si256((const __m256i*)(b + i));
 
-        __m256i prod16 = _mm256_maddubs_epi16(a_vec, b_vec);
-        __m256i sum32 = _mm256_madd_epi16(prod16, _mm256_set1_epi16(1));
-        sum_vec = _mm256_add_epi32(sum_vec, sum32);
+        /* Zero-extend uint8 to uint16 (lower 128 bits) */
+        __m128i a_lo128 = _mm256_castsi256_si128(a_vec);
+        __m128i a_hi128 = _mm256_extracti128_si256(a_vec, 1);
+        __m256i a_lo = _mm256_cvtepu8_epi16(a_lo128);
+        __m256i a_hi = _mm256_cvtepu8_epi16(a_hi128);
+
+        __m128i b_lo128 = _mm256_castsi256_si128(b_vec);
+        __m128i b_hi128 = _mm256_extracti128_si256(b_vec, 1);
+        __m256i b_lo = _mm256_cvtepu8_epi16(b_lo128);
+        __m256i b_hi = _mm256_cvtepu8_epi16(b_hi128);
+
+        /* Multiply uint16 × uint16 → uint32, accumulate */
+        __m256i sum_lo = _mm256_madd_epi16(a_lo, b_lo);
+        __m256i sum_hi = _mm256_madd_epi16(a_hi, b_hi);
+        sum_vec = _mm256_add_epi32(sum_vec, sum_lo);
+        sum_vec = _mm256_add_epi32(sum_vec, sum_hi);
     }
 
+    /* Horizontal sum of 8x 32-bit integers */
     __m128i sum_hi = _mm256_extracti128_si256(sum_vec, 1);
     __m128i sum_lo = _mm256_castsi256_si128(sum_vec);
     __m128i sum = _mm_add_epi32(sum_hi, sum_lo);

@@ -143,16 +143,17 @@ int32_t vek_dot_i8_sse2(const int8_t *a, const int8_t *b, size_t n)
 
     __m128i sum_vec = _mm_setzero_si128();
     const __m128i zero = _mm_setzero_si128();
+    const __m128i ones = _mm_set1_epi8(-1); /* for sign-extension */
 
     for (; i + simd_width <= n; i += simd_width) {
         __m128i a_vec = _mm_loadu_si128((const __m128i*)(a + i));
         __m128i b_vec = _mm_loadu_si128((const __m128i*)(b + i));
 
-        /* SSE2: unpack 8-bit to 16-bit, then use PMADDWD */
-        __m128i a_lo = _mm_unpacklo_epi8(a_vec, zero);  /* 8x 16-bit */
-        __m128i a_hi = _mm_unpackhi_epi8(a_vec, zero);  /* 8x 16-bit */
-        __m128i b_lo = _mm_unpacklo_epi8(b_vec, zero);
-        __m128i b_hi = _mm_unpackhi_epi8(b_vec, zero);
+        /* SSE2: sign-extend int8 to int16 */
+        __m128i a_lo = _mm_unpacklo_epi8(a_vec, ones);  /* 8x 16-bit (sign-extended) */
+        __m128i a_hi = _mm_unpackhi_epi8(a_vec, ones);
+        __m128i b_lo = _mm_unpacklo_epi8(b_vec, ones);
+        __m128i b_hi = _mm_unpackhi_epi8(b_vec, ones);
 
         /* PMADDWD: multiply 16-bit pairs, add adjacent pairs -> 32-bit */
         __m128i sum_lo = _mm_madd_epi16(a_lo, b_lo);
@@ -310,17 +311,17 @@ float vek_cosine_i8_sse2(const int8_t *a, const int8_t *b, size_t n)
     __m128i dot_vec = _mm_setzero_si128();
     __m128i norm_a_vec = _mm_setzero_si128();
     __m128i norm_b_vec = _mm_setzero_si128();
-    const __m128i zero = _mm_setzero_si128();
+    const __m128i ones = _mm_set1_epi8(-1); /* for sign-extension */
 
     for (; i + simd_width <= n; i += simd_width) {
         __m128i a_vec = _mm_loadu_si128((const __m128i*)(a + i));
         __m128i b_vec = _mm_loadu_si128((const __m128i*)(b + i));
 
-        /* dot product */
-        __m128i a_lo = _mm_unpacklo_epi8(a_vec, zero);
-        __m128i a_hi = _mm_unpackhi_epi8(a_vec, zero);
-        __m128i b_lo = _mm_unpacklo_epi8(b_vec, zero);
-        __m128i b_hi = _mm_unpackhi_epi8(b_vec, zero);
+        /* dot product - sign-extend int8 to int16 */
+        __m128i a_lo = _mm_unpacklo_epi8(a_vec, ones);
+        __m128i a_hi = _mm_unpackhi_epi8(a_vec, ones);
+        __m128i b_lo = _mm_unpacklo_epi8(b_vec, ones);
+        __m128i b_hi = _mm_unpackhi_epi8(b_vec, ones);
 
         __m128i dot_lo = _mm_madd_epi16(a_lo, b_lo);
         __m128i dot_hi = _mm_madd_epi16(a_hi, b_hi);
@@ -334,8 +335,8 @@ float vek_cosine_i8_sse2(const int8_t *a, const int8_t *b, size_t n)
         norm_a_vec = _mm_add_epi32(norm_a_vec, sq_a_hi);
 
         /* norm b */
-        __m128i b_lo2 = _mm_unpacklo_epi8(b_vec, zero);
-        __m128i b_hi2 = _mm_unpackhi_epi8(b_vec, zero);
+        __m128i b_lo2 = _mm_unpacklo_epi8(b_vec, ones);
+        __m128i b_hi2 = _mm_unpackhi_epi8(b_vec, ones);
         __m128i sq_b_lo = _mm_madd_epi16(b_lo2, b_lo2);
         __m128i sq_b_hi = _mm_madd_epi16(b_hi2, b_hi2);
         norm_b_vec = _mm_add_epi32(norm_b_vec, sq_b_lo);

@@ -1,4 +1,4 @@
-/**
+/**  
  * vek - AVX-512 intrinsics implementation for x86_64
  * AVX-512F (512-bit) vectorized kernels for f32 dot, L2, cosine
  *
@@ -107,24 +107,45 @@ float vek_cosine_f32_avx512(const float *a, const float *b, size_t n)
 
 /* ===== Quantized int8/uint8 variants (AVX-512 with VNNI) ===== */
 
-/* AVX-512 VNNI int8 dot product using _mm512_dpbusd_epi32 */
+/* AVX-512 VNNI int8 dot product using _mm512_dpbusd_epi32 with bias correction */
+/* VNNI: _mm512_dpbusd_epi32(dst, a_u8, b_s8) where a is unsigned, b is signed */
+/* For int8: dot = sum(a[i]*b[i]) = sum((a[i]+128)*b[i]) - 128*sum(b[i]) */
 int32_t vek_dot_i8_avx512(const int8_t *a, const int8_t *b, size_t n)
 {
     const size_t simd_width = 64; /* 512-bit = 64 int8 */
     size_t i = 0;
 
     __m512i sum_vec = _mm512_setzero_si512();
+    __m512i b_sum_vec = _mm512_setzero_si512();
 
     for (; i + simd_width <= n; i += simd_width) {
         __m512i a_vec = _mm512_loadu_si512((const __m512i*)(a + i));
         __m512i b_vec = _mm512_loadu_si512((const __m512i*)(b + i));
 
-        /* VNNI: Multiply pairs of signed 8-bit integers, sum pairs to 16-bit, then accumulate to 32-bit */
-        sum_vec = _mm512_dpbusd_epi32(sum_vec, a_vec, b_vec);
+        /* Bias a by +128 to convert to unsigned range for VNNI */
+        __m512i a_biased = _mm512_add_epi8(a_vec, _mm512_set1_epi8(128));
+        sum_vec = _mm512_dpbusd_epi32(sum_vec, a_biased, b_vec);
+
+        /* Accumulate sum(b) for correction term - use 128-bit extracts */
+        __m128i b_lo128 = _mm512_castsi512_si128(b_vec);
+        __m128i b_hi128 = _mm512_extracti32x4_epi32(b_vec, 1);
+        __m128i b_lo2_128 = _mm512_extracti32x4_epi32(b_vec, 2);
+        __m128i b_hi2_128 = _mm512_extracti32x4_epi32(b_vec, 3);
+
+        __m512i b_lo = _mm512_cvtepi8_epi32(b_lo128);
+        __m512i b_hi = _mm512_cvtepi8_epi32(b_hi128);
+        __m512i b_lo2 = _mm512_cvtepi8_epi32(b_lo2_128);
+        __m512i b_hi2 = _mm512_cvtepi8_epi32(b_hi2_128);
+
+        b_sum_vec = _mm512_add_epi32(b_sum_vec, b_lo);
+        b_sum_vec = _mm512_add_epi32(b_sum_vec, b_hi);
+        b_sum_vec = _mm512_add_epi32(b_sum_vec, b_lo2);
+        b_sum_vec = _mm512_add_epi32(b_sum_vec, b_hi2);
     }
 
-    /* Horizontal sum */
     int32_t sum_scalar = _mm512_reduce_add_epi32(sum_vec);
+    int32_t b_sum_scalar = _mm512_reduce_add_epi32(b_sum_vec);
+    sum_scalar -= 128 * b_sum_scalar; /* Correction term */
 
     /* Tail */
     for (; i < n; i++) {
@@ -134,10 +155,10 @@ int32_t vek_dot_i8_avx512(const int8_t *a, const int8_t *b, size_t n)
     return sum_scalar;
 }
 
-/* AVX-512 VNNI uint8 dot product */
+/* AVX-512 VNNI uint8 dot product using widen-then-multiply for correctness */
 uint32_t vek_dot_u8_avx512(const uint8_t *a, const uint8_t *b, size_t n)
 {
-    const size_t simd_width = 64;
+    const size_t simd_width = 64; /* 512-bit = 64 uint8 */
     size_t i = 0;
 
     __m512i sum_vec = _mm512_setzero_si512();
@@ -146,11 +167,51 @@ uint32_t vek_dot_u8_avx512(const uint8_t *a, const uint8_t *b, size_t n)
         __m512i a_vec = _mm512_loadu_si512((const __m512i*)(a + i));
         __m512i b_vec = _mm512_loadu_si512((const __m512i*)(b + i));
 
-        sum_vec = _mm512_dpbusd_epi32(sum_vec, a_vec, b_vec);
+        /* Zero-extend uint8 to uint16, then multiply uint16×uint16 → uint32, accumulate */
+        __m128i a_lo128 = _mm512_castsi512_si128(a_vec);
+        __m128i a_hi128 = _mm512_extracti32x4_epi32(a_vec, 1);
+        __m128i a_lo2_128 = _mm512_extracti32x4_epi32(a_vec, 2);
+        __m128i a_hi2_128 = _mm512_extracti32x4_epi32(a_vec, 3);
+
+        __m128i b_lo128 = _mm512_castsi512_si128(b_vec);
+        __m128i b_hi128 = _mm512_extracti32x4_epi32(b_vec, 1);
+        __m128i b_lo2_128 = _mm512_extracti32x4_epi32(b_vec, 2);
+        __m128i b_hi2_128 = _mm512_extracti32x4_epi32(b_vec, 3);
+
+        __m256i a_lo256 = _mm256_cvtepu8_epi16(a_lo128);
+        __m256i a_hi256 = _mm256_cvtepu8_epi16(a_hi128);
+        __m256i a_lo2_256 = _mm256_cvtepu8_epi16(a_lo2_128);
+        __m256i a_hi2_256 = _mm256_cvtepu8_epi16(a_hi2_128);
+
+        __m256i b_lo256 = _mm256_cvtepu8_epi16(b_lo128);
+        __m256i b_hi256 = _mm256_cvtepu8_epi16(b_hi128);
+        __m256i b_lo2_256 = _mm256_cvtepu8_epi16(b_lo2_128);
+        __m256i b_hi2_256 = _mm256_cvtepu8_epi16(b_hi2_128);
+
+        __m512i a_lo = _mm512_cvtepu16_epi32(a_lo256);
+        __m512i a_hi = _mm512_cvtepu16_epi32(a_hi256);
+        __m512i a_lo2 = _mm512_cvtepu16_epi32(a_lo2_256);
+        __m512i a_hi2 = _mm512_cvtepu16_epi32(a_hi2_256);
+
+        __m512i b_lo = _mm512_cvtepu16_epi32(b_lo256);
+        __m512i b_hi = _mm512_cvtepu16_epi32(b_hi256);
+        __m512i b_lo2 = _mm512_cvtepu16_epi32(b_lo2_256);
+        __m512i b_hi2 = _mm512_cvtepu16_epi32(b_hi2_256);
+
+        __m512i sum_lo = _mm512_madd_epi16(a_lo, b_lo);
+        __m512i sum_hi = _mm512_madd_epi16(a_hi, b_hi);
+        __m512i sum_lo2 = _mm512_madd_epi16(a_lo2, b_lo2);
+        __m512i sum_hi2 = _mm512_madd_epi16(a_hi2, b_hi2);
+
+        sum_vec = _mm512_add_epi32(sum_vec, sum_lo);
+        sum_vec = _mm512_add_epi32(sum_vec, sum_hi);
+        sum_vec = _mm512_add_epi32(sum_vec, sum_lo2);
+        sum_vec = _mm512_add_epi32(sum_vec, sum_hi2);
     }
 
     uint32_t sum_scalar = (uint32_t)_mm512_reduce_add_epi32(sum_vec);
 
+    /* Tail */
     for (; i < n; i++) {
         sum_scalar += (uint32_t)a[i] * (uint32_t)b[i];
     }
@@ -170,20 +231,52 @@ int32_t vek_l2sq_i8_avx512(const int8_t *a, const int8_t *b, size_t n)
         __m512i a_vec = _mm512_loadu_si512((const __m512i*)(a + i));
         __m512i b_vec = _mm512_loadu_si512((const __m512i*)(b + i));
 
-        /* Convert to 16-bit for subtraction */
-        __m512i a_lo = _mm512_cvtepi8_epi16(_mm512_extracti64x4_epi64(a_vec, 0));
-        __m512i a_hi = _mm512_cvtepi8_epi16(_mm512_extracti64x4_epi64(a_vec, 1));
-        __m512i b_lo = _mm512_cvtepi8_epi16(_mm512_extracti64x4_epi64(b_vec, 0));
-        __m512i b_hi = _mm512_cvtepi8_epi16(_mm512_extracti64x4_epi64(b_vec, 1));
+        /* Convert to 16-bit for subtraction - use 128-bit extracts */
+        __m128i a_lo128 = _mm512_castsi512_si128(a_vec);
+        __m128i a_hi128 = _mm512_extracti32x4_epi32(a_vec, 1);
+        __m128i a_lo2_128 = _mm512_extracti32x4_epi32(a_vec, 2);
+        __m128i a_hi2_128 = _mm512_extracti32x4_epi32(a_vec, 3);
 
-        __m512i diff_lo = _mm512_sub_epi16(a_lo, b_lo);
-        __m512i diff_hi = _mm512_sub_epi16(a_hi, b_hi);
+        __m128i b_lo128 = _mm512_castsi512_si128(b_vec);
+        __m128i b_hi128 = _mm512_extracti32x4_epi32(b_vec, 1);
+        __m128i b_lo2_128 = _mm512_extracti32x4_epi32(b_vec, 2);
+        __m128i b_hi2_128 = _mm512_extracti32x4_epi32(b_vec, 3);
 
-        __m512i sq_lo = _mm512_madd_epi16(diff_lo, diff_lo);
-        __m512i sq_hi = _mm512_madd_epi16(diff_hi, diff_hi);
+        __m256i a_lo256 = _mm256_cvtepi8_epi16(a_lo128);
+        __m256i a_hi256 = _mm256_cvtepi8_epi16(a_hi128);
+        __m256i a_lo2_256 = _mm256_cvtepi8_epi16(a_lo2_128);
+        __m256i a_hi2_256 = _mm256_cvtepi8_epi16(a_hi2_128);
+
+        __m256i b_lo256 = _mm256_cvtepi8_epi16(b_lo128);
+        __m256i b_hi256 = _mm256_cvtepi8_epi16(b_hi128);
+        __m256i b_lo2_256 = _mm256_cvtepi8_epi16(b_lo2_128);
+        __m256i b_hi2_256 = _mm256_cvtepi8_epi16(b_hi2_128);
+
+        __m512i a_lo = _mm512_cvtepi16_epi32(a_lo256);
+        __m512i a_hi = _mm512_cvtepi16_epi32(a_hi256);
+        __m512i a_lo2 = _mm512_cvtepi16_epi32(a_lo2_256);
+        __m512i a_hi2 = _mm512_cvtepi16_epi32(a_hi2_256);
+
+        __m512i b_lo = _mm512_cvtepi16_epi32(b_lo256);
+        __m512i b_hi = _mm512_cvtepi16_epi32(b_hi256);
+        __m512i b_lo2 = _mm512_cvtepi16_epi32(b_lo2_256);
+        __m512i b_hi2 = _mm512_cvtepi16_epi32(b_hi2_256);
+
+        __m512i diff_lo = _mm512_sub_epi32(a_lo, b_lo);
+        __m512i diff_hi = _mm512_sub_epi32(a_hi, b_hi);
+        __m512i diff_lo2 = _mm512_sub_epi32(a_lo2, b_lo2);
+        __m512i diff_hi2 = _mm512_sub_epi32(a_hi2, b_hi2);
+
+        /* Square using mullo + add (no madd_epi32 instruction) */
+        __m512i sq_lo = _mm512_mullo_epi32(diff_lo, diff_lo);
+        __m512i sq_hi = _mm512_mullo_epi32(diff_hi, diff_hi);
+        __m512i sq_lo2 = _mm512_mullo_epi32(diff_lo2, diff_lo2);
+        __m512i sq_hi2 = _mm512_mullo_epi32(diff_hi2, diff_hi2);
 
         sum_vec = _mm512_add_epi32(sum_vec, sq_lo);
         sum_vec = _mm512_add_epi32(sum_vec, sq_hi);
+        sum_vec = _mm512_add_epi32(sum_vec, sq_lo2);
+        sum_vec = _mm512_add_epi32(sum_vec, sq_hi2);
     }
 
     int32_t sum_scalar = _mm512_reduce_add_epi32(sum_vec);
@@ -208,19 +301,51 @@ uint32_t vek_l2sq_u8_avx512(const uint8_t *a, const uint8_t *b, size_t n)
         __m512i a_vec = _mm512_loadu_si512((const __m512i*)(a + i));
         __m512i b_vec = _mm512_loadu_si512((const __m512i*)(b + i));
 
-        __m512i a_lo = _mm512_cvtepu8_epi16(_mm512_extracti64x4_epi64(a_vec, 0));
-        __m512i a_hi = _mm512_cvtepu8_epi16(_mm512_extracti64x4_epi64(a_vec, 1));
-        __m512i b_lo = _mm512_cvtepu8_epi16(_mm512_extracti64x4_epi64(b_vec, 0));
-        __m512i b_hi = _mm512_cvtepu8_epi16(_mm512_extracti64x4_epi64(b_vec, 1));
+        __m128i a_lo128 = _mm512_castsi512_si128(a_vec);
+        __m128i a_hi128 = _mm512_extracti32x4_epi32(a_vec, 1);
+        __m128i a_lo2_128 = _mm512_extracti32x4_epi32(a_vec, 2);
+        __m128i a_hi2_128 = _mm512_extracti32x4_epi32(a_vec, 3);
 
-        __m512i diff_lo = _mm512_sub_epi16(a_lo, b_lo);
-        __m512i diff_hi = _mm512_sub_epi16(a_hi, b_hi);
+        __m128i b_lo128 = _mm512_castsi512_si128(b_vec);
+        __m128i b_hi128 = _mm512_extracti32x4_epi32(b_vec, 1);
+        __m128i b_lo2_128 = _mm512_extracti32x4_epi32(b_vec, 2);
+        __m128i b_hi2_128 = _mm512_extracti32x4_epi32(b_vec, 3);
 
-        __m512i sq_lo = _mm512_madd_epi16(diff_lo, diff_lo);
-        __m512i sq_hi = _mm512_madd_epi16(diff_hi, diff_hi);
+        __m256i a_lo256 = _mm256_cvtepu8_epi16(a_lo128);
+        __m256i a_hi256 = _mm256_cvtepu8_epi16(a_hi128);
+        __m256i a_lo2_256 = _mm256_cvtepu8_epi16(a_lo2_128);
+        __m256i a_hi2_256 = _mm256_cvtepu8_epi16(a_hi2_128);
+
+        __m256i b_lo256 = _mm256_cvtepu8_epi16(b_lo128);
+        __m256i b_hi256 = _mm256_cvtepu8_epi16(b_hi128);
+        __m256i b_lo2_256 = _mm256_cvtepu8_epi16(b_lo2_128);
+        __m256i b_hi2_256 = _mm256_cvtepu8_epi16(b_hi2_128);
+
+        __m512i a_lo = _mm512_cvtepu16_epi32(a_lo256);
+        __m512i a_hi = _mm512_cvtepu16_epi32(a_hi256);
+        __m512i a_lo2 = _mm512_cvtepu16_epi32(a_lo2_256);
+        __m512i a_hi2 = _mm512_cvtepu16_epi32(a_hi2_256);
+
+        __m512i b_lo = _mm512_cvtepu16_epi32(b_lo256);
+        __m512i b_hi = _mm512_cvtepu16_epi32(b_hi256);
+        __m512i b_lo2 = _mm512_cvtepu16_epi32(b_lo2_256);
+        __m512i b_hi2 = _mm512_cvtepu16_epi32(b_hi2_256);
+
+        __m512i diff_lo = _mm512_sub_epi32(a_lo, b_lo);
+        __m512i diff_hi = _mm512_sub_epi32(a_hi, b_hi);
+        __m512i diff_lo2 = _mm512_sub_epi32(a_lo2, b_lo2);
+        __m512i diff_hi2 = _mm512_sub_epi32(a_hi2, b_hi2);
+
+        /* Square using mullo + add (no madd_epi32 instruction) */
+        __m512i sq_lo = _mm512_mullo_epi32(diff_lo, diff_lo);
+        __m512i sq_hi = _mm512_mullo_epi32(diff_hi, diff_hi);
+        __m512i sq_lo2 = _mm512_mullo_epi32(diff_lo2, diff_lo2);
+        __m512i sq_hi2 = _mm512_mullo_epi32(diff_hi2, diff_hi2);
 
         sum_vec = _mm512_add_epi32(sum_vec, sq_lo);
         sum_vec = _mm512_add_epi32(sum_vec, sq_hi);
+        sum_vec = _mm512_add_epi32(sum_vec, sq_lo2);
+        sum_vec = _mm512_add_epi32(sum_vec, sq_hi2);
     }
 
     uint32_t sum_scalar = (uint32_t)_mm512_reduce_add_epi32(sum_vec);
@@ -242,32 +367,82 @@ float vek_cosine_i8_avx512(const int8_t *a, const int8_t *b, size_t n)
     __m512i dot_vec = _mm512_setzero_si512();
     __m512i norm_a_vec = _mm512_setzero_si512();
     __m512i norm_b_vec = _mm512_setzero_si512();
+    __m512i b_sum_vec = _mm512_setzero_si512();
 
     for (; i + simd_width <= n; i += simd_width) {
         __m512i a_vec = _mm512_loadu_si512((const __m512i*)(a + i));
         __m512i b_vec = _mm512_loadu_si512((const __m512i*)(b + i));
 
-        /* dot product using VNNI */
-        dot_vec = _mm512_dpbusd_epi32(dot_vec, a_vec, b_vec);
+        /* dot product using VNNI with bias correction */
+        __m512i a_biased = _mm512_add_epi8(a_vec, _mm512_set1_epi8(-128));
+        dot_vec = _mm512_dpbusd_epi32(dot_vec, a_biased, b_vec);
+
+        /* Accumulate sum(b) for dot correction - use 128-bit extracts */
+        __m128i b_lo128 = _mm512_castsi512_si128(b_vec);
+        __m128i b_hi128 = _mm512_extracti32x4_epi32(b_vec, 1);
+        __m128i b_lo2_128 = _mm512_extracti32x4_epi32(b_vec, 2);
+        __m128i b_hi2_128 = _mm512_extracti32x4_epi32(b_vec, 3);
+
+        __m512i b_lo = _mm512_cvtepi8_epi32(b_lo128);
+        __m512i b_hi = _mm512_cvtepi8_epi32(b_hi128);
+        __m512i b_lo2 = _mm512_cvtepi8_epi32(b_lo2_128);
+        __m512i b_hi2 = _mm512_cvtepi8_epi32(b_hi2_128);
+
+        b_sum_vec = _mm512_add_epi32(b_sum_vec, b_lo);
+        b_sum_vec = _mm512_add_epi32(b_sum_vec, b_hi);
+        b_sum_vec = _mm512_add_epi32(b_sum_vec, b_lo2);
+        b_sum_vec = _mm512_add_epi32(b_sum_vec, b_hi2);
 
         /* norm a - convert to 16-bit, square with madd */
-        __m512i a_lo = _mm512_cvtepi8_epi16(_mm512_extracti64x4_epi64(a_vec, 0));
-        __m512i a_hi = _mm512_cvtepi8_epi16(_mm512_extracti64x4_epi64(a_vec, 1));
-        __m512i sq_a_lo = _mm512_madd_epi16(a_lo, a_lo);
-        __m512i sq_a_hi = _mm512_madd_epi16(a_hi, a_hi);
+        __m128i a_lo128 = _mm512_castsi512_si128(a_vec);
+        __m128i a_hi128 = _mm512_extracti32x4_epi32(a_vec, 1);
+        __m128i a_lo2_128 = _mm512_extracti32x4_epi32(a_vec, 2);
+        __m128i a_hi2_128 = _mm512_extracti32x4_epi32(a_vec, 3);
+
+        __m256i a_lo256 = _mm256_cvtepi8_epi16(a_lo128);
+        __m256i a_hi256 = _mm256_cvtepi8_epi16(a_hi128);
+        __m256i a_lo2_256 = _mm256_cvtepi8_epi16(a_lo2_128);
+        __m256i a_hi2_256 = _mm256_cvtepi8_epi16(a_hi2_128);
+
+        __m512i a_lo16 = _mm512_cvtepi16_epi32(a_lo256);
+        __m512i a_hi16 = _mm512_cvtepi16_epi32(a_hi256);
+        __m512i a_lo16_2 = _mm512_cvtepi16_epi32(a_lo2_256);
+        __m512i a_hi16_2 = _mm512_cvtepi16_epi32(a_hi2_256);
+
+        __m512i sq_a_lo = _mm512_madd_epi16(a_lo16, a_lo16);
+        __m512i sq_a_hi = _mm512_madd_epi16(a_hi16, a_hi16);
+        __m512i sq_a_lo2 = _mm512_madd_epi16(a_lo16_2, a_lo16_2);
+        __m512i sq_a_hi2 = _mm512_madd_epi16(a_hi16_2, a_hi16_2);
         norm_a_vec = _mm512_add_epi32(norm_a_vec, sq_a_lo);
         norm_a_vec = _mm512_add_epi32(norm_a_vec, sq_a_hi);
+        norm_a_vec = _mm512_add_epi32(norm_a_vec, sq_a_lo2);
+        norm_a_vec = _mm512_add_epi32(norm_a_vec, sq_a_hi2);
 
         /* norm b */
-        __m512i b_lo = _mm512_cvtepi8_epi16(_mm512_extracti64x4_epi64(b_vec, 0));
-        __m512i b_hi = _mm512_cvtepi8_epi16(_mm512_extracti64x4_epi64(b_vec, 1));
-        __m512i sq_b_lo = _mm512_madd_epi16(b_lo, b_lo);
-        __m512i sq_b_hi = _mm512_madd_epi16(b_hi, b_hi);
+        __m256i b_lo256 = _mm256_cvtepi8_epi16(b_lo128);
+        __m256i b_hi256 = _mm256_cvtepi8_epi16(b_hi128);
+        __m256i b_lo2_256 = _mm256_cvtepi8_epi16(b_lo2_128);
+        __m256i b_hi2_256 = _mm256_cvtepi8_epi16(b_hi2_128);
+
+        __m512i b_lo16 = _mm512_cvtepi16_epi32(b_lo256);
+        __m512i b_hi16 = _mm512_cvtepi16_epi32(b_hi256);
+        __m512i b_lo16_2 = _mm512_cvtepi16_epi32(b_lo2_256);
+        __m512i b_hi16_2 = _mm512_cvtepi16_epi32(b_hi2_256);
+
+        __m512i sq_b_lo = _mm512_madd_epi16(b_lo16, b_lo16);
+        __m512i sq_b_hi = _mm512_madd_epi16(b_hi16, b_hi16);
+        __m512i sq_b_lo2 = _mm512_madd_epi16(b_lo16_2, b_lo16_2);
+        __m512i sq_b_hi2 = _mm512_madd_epi16(b_hi16_2, b_hi16_2);
         norm_b_vec = _mm512_add_epi32(norm_b_vec, sq_b_lo);
         norm_b_vec = _mm512_add_epi32(norm_b_vec, sq_b_hi);
+        norm_b_vec = _mm512_add_epi32(norm_b_vec, sq_b_lo2);
+        norm_b_vec = _mm512_add_epi32(norm_b_vec, sq_b_hi2);
     }
 
     int32_t dot_scalar = _mm512_reduce_add_epi32(dot_vec);
+    int32_t b_sum_scalar = _mm512_reduce_add_epi32(b_sum_vec);
+    dot_scalar -= (-128) * b_sum_scalar; /* VNNI bias correction: a was biased by -128 */
+
     int32_t norm_a_scalar = _mm512_reduce_add_epi32(norm_a_vec);
     int32_t norm_b_scalar = _mm512_reduce_add_epi32(norm_b_vec);
 
@@ -298,31 +473,87 @@ float vek_cosine_u8_avx512(const uint8_t *a, const uint8_t *b, size_t n)
     __m512i dot_vec = _mm512_setzero_si512();
     __m512i norm_a_vec = _mm512_setzero_si512();
     __m512i norm_b_vec = _mm512_setzero_si512();
+    __m512i a_sum_vec = _mm512_setzero_si512();
 
     for (; i + simd_width <= n; i += simd_width) {
         __m512i a_vec = _mm512_loadu_si512((const __m512i*)(a + i));
         __m512i b_vec = _mm512_loadu_si512((const __m512i*)(b + i));
 
-        dot_vec = _mm512_dpbusd_epi32(dot_vec, a_vec, b_vec);
+        /* dot product using widen-then-multiply */
+        __m128i a_lo128 = _mm512_castsi512_si128(a_vec);
+        __m128i a_hi128 = _mm512_extracti32x4_epi32(a_vec, 1);
+        __m128i a_lo2_128 = _mm512_extracti32x4_epi32(a_vec, 2);
+        __m128i a_hi2_128 = _mm512_extracti32x4_epi32(a_vec, 3);
+
+        __m128i b_lo128 = _mm512_castsi512_si128(b_vec);
+        __m128i b_hi128 = _mm512_extracti32x4_epi32(b_vec, 1);
+        __m128i b_lo2_128 = _mm512_extracti32x4_epi32(b_vec, 2);
+        __m128i b_hi2_128 = _mm512_extracti32x4_epi32(b_vec, 3);
+
+        __m256i a_lo256 = _mm256_cvtepu8_epi16(a_lo128);
+        __m256i a_hi256 = _mm256_cvtepu8_epi16(a_hi128);
+        __m256i a_lo2_256 = _mm256_cvtepu8_epi16(a_lo2_128);
+        __m256i a_hi2_256 = _mm256_cvtepu8_epi16(a_hi2_128);
+
+        __m256i b_lo256 = _mm256_cvtepu8_epi16(b_lo128);
+        __m256i b_hi256 = _mm256_cvtepu8_epi16(b_hi128);
+        __m256i b_lo2_256 = _mm256_cvtepu8_epi16(b_lo2_128);
+        __m256i b_hi2_256 = _mm256_cvtepu8_epi16(b_hi2_128);
+
+        __m512i a_lo = _mm512_cvtepu16_epi32(a_lo256);
+        __m512i a_hi = _mm512_cvtepu16_epi32(a_hi256);
+        __m512i a_lo2 = _mm512_cvtepu16_epi32(a_lo2_256);
+        __m512i a_hi2 = _mm512_cvtepu16_epi32(a_hi2_256);
+
+        __m512i b_lo = _mm512_cvtepu16_epi32(b_lo256);
+        __m512i b_hi = _mm512_cvtepu16_epi32(b_hi256);
+        __m512i b_lo2 = _mm512_cvtepu16_epi32(b_lo2_256);
+        __m512i b_hi2 = _mm512_cvtepu16_epi32(b_hi2_256);
+
+        __m512i dot_lo = _mm512_madd_epi16(a_lo, b_lo);
+        __m512i dot_hi = _mm512_madd_epi16(a_hi, b_hi);
+        __m512i dot_lo2 = _mm512_madd_epi16(a_lo2, b_lo2);
+        __m512i dot_hi2 = _mm512_madd_epi16(a_hi2, b_hi2);
+        dot_vec = _mm512_add_epi32(dot_vec, dot_lo);
+        dot_vec = _mm512_add_epi32(dot_vec, dot_hi);
+        dot_vec = _mm512_add_epi32(dot_vec, dot_lo2);
+        dot_vec = _mm512_add_epi32(dot_vec, dot_hi2);
 
         /* norm a */
-        __m512i a_lo = _mm512_cvtepu8_epi16(_mm512_extracti64x4_epi64(a_vec, 0));
-        __m512i a_hi = _mm512_cvtepu8_epi16(_mm512_extracti64x4_epi64(a_vec, 1));
         __m512i sq_a_lo = _mm512_madd_epi16(a_lo, a_lo);
         __m512i sq_a_hi = _mm512_madd_epi16(a_hi, a_hi);
+        __m512i sq_a_lo2 = _mm512_madd_epi16(a_lo2, a_lo2);
+        __m512i sq_a_hi2 = _mm512_madd_epi16(a_hi2, a_hi2);
         norm_a_vec = _mm512_add_epi32(norm_a_vec, sq_a_lo);
         norm_a_vec = _mm512_add_epi32(norm_a_vec, sq_a_hi);
+        norm_a_vec = _mm512_add_epi32(norm_a_vec, sq_a_lo2);
+        norm_a_vec = _mm512_add_epi32(norm_a_vec, sq_a_hi2);
+
+        /* Accumulate sum(a) for VNNI correction term - use 128-bit extracts */
+        __m512i a_lo32 = _mm512_cvtepu8_epi32(a_lo128);
+        __m512i a_hi32 = _mm512_cvtepu8_epi32(a_hi128);
+        __m512i a_lo32_2 = _mm512_cvtepu8_epi32(a_lo2_128);
+        __m512i a_hi32_2 = _mm512_cvtepu8_epi32(a_hi2_128);
+        a_sum_vec = _mm512_add_epi32(a_sum_vec, a_lo32);
+        a_sum_vec = _mm512_add_epi32(a_sum_vec, a_hi32);
+        a_sum_vec = _mm512_add_epi32(a_sum_vec, a_lo32_2);
+        a_sum_vec = _mm512_add_epi32(a_sum_vec, a_hi32_2);
 
         /* norm b */
-        __m512i b_lo = _mm512_cvtepu8_epi16(_mm512_extracti64x4_epi64(b_vec, 0));
-        __m512i b_hi = _mm512_cvtepu8_epi16(_mm512_extracti64x4_epi64(b_vec, 1));
         __m512i sq_b_lo = _mm512_madd_epi16(b_lo, b_lo);
         __m512i sq_b_hi = _mm512_madd_epi16(b_hi, b_hi);
+        __m512i sq_b_lo2 = _mm512_madd_epi16(b_lo2, b_lo2);
+        __m512i sq_b_hi2 = _mm512_madd_epi16(b_hi2, b_hi2);
         norm_b_vec = _mm512_add_epi32(norm_b_vec, sq_b_lo);
         norm_b_vec = _mm512_add_epi32(norm_b_vec, sq_b_hi);
+        norm_b_vec = _mm512_add_epi32(norm_b_vec, sq_b_lo2);
+        norm_b_vec = _mm512_add_epi32(norm_b_vec, sq_b_hi2);
     }
 
     int32_t dot_scalar = _mm512_reduce_add_epi32(dot_vec);
+    int32_t a_sum_scalar = _mm512_reduce_add_epi32(a_sum_vec);
+    dot_scalar -= 128 * a_sum_scalar; /* VNNI correction: sum(a*b) = sum((a+128)*b) - 128*sum(a) */
+
     int32_t norm_a_scalar = _mm512_reduce_add_epi32(norm_a_vec);
     int32_t norm_b_scalar = _mm512_reduce_add_epi32(norm_b_vec);
 

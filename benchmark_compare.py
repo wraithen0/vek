@@ -7,6 +7,24 @@ Compares actual performance of vek against established libraries
 import sys
 import time
 import ctypes
+
+# Import simsimd BEFORE loading libvek to avoid datatype issues
+try:
+    import simsimd
+    SIMSIMD_AVAILABLE = True
+except ImportError:
+    SIMSIMD_AVAILABLE = False
+
+# Load vek BEFORE numpy to avoid simsimd datatype issues
+try:
+    libvek = ctypes.CDLL('./libvek.so')
+    libvek.vek_init()
+    VEK_AVAILABLE = True
+except OSError:
+    VEK_AVAILABLE = False
+
+# Then import numpy and other libraries
+import time
 import numpy as np
 
 # Try to import libraries
@@ -21,20 +39,6 @@ try:
     USEARCH_AVAILABLE = True
 except ImportError:
     USEARCH_AVAILABLE = False
-
-try:
-    import simsimd
-    SIMSIMD_AVAILABLE = True
-except ImportError:
-    SIMSIMD_AVAILABLE = False
-
-# Load vek
-try:
-    libvek = ctypes.CDLL('./libvek.so')
-    libvek.vek_init()
-    VEK_AVAILABLE = True
-except OSError:
-    VEK_AVAILABLE = False
 
 # Benchmark parameters
 VECTOR_SIZES = [32, 64, 128, 256, 512, 1024, 2048, 4096, 8192]
@@ -73,13 +77,18 @@ def run_dot_bench():
         a, b = generate_vectors(n)
         iters = max(1000, ITERATIONS * 1024 // n)
 
-        # Pre-create INDEPENDENT copies for simsimd
+        # Pre-create INDEPENDENT copies for simsimd - ensure same dtype
         a_c = np.ascontiguousarray(a.copy(), dtype=np.float32)
         b_c = np.ascontiguousarray(b.copy(), dtype=np.float32)
         a_c.flags.writeable = True
         b_c.flags.writeable = True
 
-        # Warmup
+        # Warmup - use same arrays as benchmark
+        a_warm = np.ascontiguousarray(a.copy(), dtype=np.float32)
+        b_warm = np.ascontiguousarray(b.copy(), dtype=np.float32)
+        a_warm.flags.writeable = True
+        b_warm.flags.writeable = True
+
         for _ in range(100):
             if VEK_AVAILABLE:
                 from ctypes import POINTER, c_float
@@ -90,7 +99,7 @@ def run_dot_bench():
             if USEARCH_AVAILABLE:
                 np.dot(a, b)
             if SIMSIMD_AVAILABLE:
-                simsimd.dot(a_c, b_c)
+                simsimd.dot(a_warm, b_warm)
 
         # Benchmark vek
         if VEK_AVAILABLE:
@@ -114,9 +123,11 @@ def run_dot_bench():
         else:
             usearch_ns = float('nan')
 
-        # simsimd - use INDEPENDENT copies
+        # simsimd - use INDEPENDENT copies with explicit dtype matching
         if SIMSIMD_AVAILABLE:
-            simsimd_ns = bench_func("simsimd", lambda: simsimd.dot(a_c, b_c), iters)
+            a_s = np.ascontiguousarray(a_c, dtype=np.float32)
+            b_s = np.ascontiguousarray(b_c, dtype=np.float32)
+            simsimd_ns = bench_func("simsimd", lambda: simsimd.dot(a_s, b_s), iters)
         else:
             simsimd_ns = float('nan')
 

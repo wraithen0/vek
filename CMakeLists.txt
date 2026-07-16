@@ -1,9 +1,9 @@
 cmake_minimum_required(VERSION 3.16)
-project(vek VERSION 0.7.0 LANGUAGES C)
+project(vek VERSION 1.0.0 LANGUAGES C)
 
 # Project metadata
-set(VEK_VERSION_MAJOR 0)
-set(VEK_VERSION_MINOR 7)
+set(VEK_VERSION_MAJOR 1)
+set(VEK_VERSION_MINOR 0)
 set(VEK_VERSION_PATCH 0)
 
 # C standard
@@ -21,35 +21,6 @@ set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
-# Platform-specific compile options
-function(vek_add_simd_flags target)
-    if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64")
-        # SSE2 baseline - always available on x86_64
-        target_compile_options(${target} PRIVATE $<$<COMPILE_LANGUAGE:C>: -msse2>)
-
-        # AVX2 + FMA
-        if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
-            target_compile_options(${target} PRIVATE
-                $<$<COMPILE_LANGUAGE:C>: -mavx -mavx2 -mfma>
-            )
-        elseif(CMAKE_C_COMPILER_ID STREQUAL "MSVC")
-            target_compile_options(${target} PRIVATE /arch:AVX2)
-        endif()
-
-        # AVX-512 (Linux only for now, check at configure time)
-        if(UNIX AND NOT APPLE)
-            target_compile_options(${target} PRIVATE
-                $<$<COMPILE_LANGUAGE:C>: -mavx512f -mavx512vl -mavx512bw -mavx512dq -mavx512vnni -mavx512vpopcntdq>
-            )
-        endif()
-    elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|arm64")
-        # NEON on ARM64
-        target_compile_options(${target} PRIVATE
-            $<$<COMPILE_LANGUAGE:C>: -march=armv8-a+simd>
-        )
-    endif()
-endfunction()
-
 # --- Library target ---
 add_library(vek_static STATIC
     src/scalar/kernels.c
@@ -59,11 +30,6 @@ target_include_directories(vek_static PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>
 )
-target_compile_options(vek_static PRIVATE
-    -std=c11 -O3 -Wall -Wextra -pedantic -fPIC
-    $<$<COMPILE_LANGUAGE:C>: -DVEK_BUILD_STATIC>
-)
-vek_add_simd_flags(vek_static)
 
 add_library(vek_shared SHARED
     src/scalar/kernels.c
@@ -73,20 +39,21 @@ target_include_directories(vek_shared PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>
 )
-target_compile_options(vek_shared PRIVATE
+
+# Base compile options
+set(VEK_BASE_COMPILE_OPTIONS 
     -std=c11 -O3 -Wall -Wextra -pedantic -fPIC
-    $<$<COMPILE_LANGUAGE:C>: -DVEK_BUILD_SHARED>
 )
-vek_add_simd_flags(vek_shared)
+
+# Apply base options to both targets
+target_compile_options(vek_static PRIVATE ${VEK_BASE_COMPILE_OPTIONS} -DVEK_BUILD_STATIC)
+target_compile_options(vek_shared PRIVATE ${VEK_BASE_COMPILE_OPTIONS} -DVEK_BUILD_SHARED)
 
 # Alias for convenience
 add_library(vek::vek ALIAS vek_shared)
 add_library(vek::static ALIAS vek_static)
 
 # --- Architecture-specific source files ---
-# These are compiled into both static and shared libs automatically
-# because we list them in both targets
-
 # x86_64 backends
 if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64")
     target_sources(vek_static PRIVATE
@@ -98,14 +65,50 @@ if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64")
         src/x86/avx2.c
     )
 
-    # AVX-512 (Linux only)
-    if(UNIX AND NOT APPLE)
+    # Per-file SIMD flags using target_compile_options with FILE_SET (CMake 3.16+)
+    if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
+        # SSE2 - baseline for x86_64
+        set_source_files_properties(src/x86/sse2.c PROPERTIES COMPILE_FLAGS "-msse2")
+        
+        # AVX2 + FMA
+        set_source_files_properties(src/x86/avx2.c PROPERTIES COMPILE_FLAGS "-msse2 -mavx -mavx2 -mfma")
+        
+        # AVX-512 (Linux only, optional)
+        if(UNIX AND NOT APPLE)
+            option(VEK_BUILD_AVX512 "Build AVX-512 kernels (requires host support)" OFF)
+            if(VEK_BUILD_AVX512)
+                set_source_files_properties(src/x86/avx512.c PROPERTIES COMPILE_FLAGS "-msse2 -mavx -mavx2 -mfma -mavx512f -mavx512vl -mavx512bw -mavx512dq -mavx512vnni -mavx512vpopcntdq")
+            endif()
+        endif()
+    elseif(CMAKE_C_COMPILER_ID STREQUAL "MSVC")
+        set_source_files_properties(src/x86/sse2.c PROPERTIES COMPILE_FLAGS "/arch:SSE2")
+        set_source_files_properties(src/x86/avx2.c PROPERTIES COMPILE_FLAGS "/arch:AVX2")
+    endif()
+
+    # Add x86 sources
+    target_sources(vek_static PRIVATE
+        src/x86/sse2.c
+        src/x86/avx2.c
+    )
+    target_sources(vek_shared PRIVATE
+        src/x86/sse2.c
+        src/x86/avx2.c
+    )
+
+    if(UNIX AND NOT APPLE AND VEK_BUILD_AVX512)
         target_sources(vek_static PRIVATE src/x86/avx512.c)
         target_sources(vek_shared PRIVATE src/x86/avx512.c)
     endif()
+
 elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|arm64")
     target_sources(vek_static PRIVATE src/arm/neon.c)
     target_sources(vek_shared PRIVATE src/arm/neon.c)
+
+    if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
+        set_source_files_properties(src/arm/neon.c PROPERTIES COMPILE_FLAGS "-march=armv8-a+simd")
+    elseif(CMAKE_C_COMPILER_ID STREQUAL "MSVC")
+        set_source_files_properties(src/arm/neon.c PROPERTIES COMPILE_FLAGS "/arch:ARM64")
+    endif()
 endif()
 
 # --- Tests ---
