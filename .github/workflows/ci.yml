@@ -70,6 +70,9 @@ jobs:
           if [ "$RUNNER_OS" = "Windows" ]; then
             ./test_kernels.exe
             ./test_backends.exe
+          elif [ "$RUNNER_OS" = "macOS" ]; then
+            DYLD_LIBRARY_PATH=./lib ./test_kernels
+            DYLD_LIBRARY_PATH=./lib ./test_backends
           else
             LD_LIBRARY_PATH=./lib ./test_kernels
             LD_LIBRARY_PATH=./lib ./test_backends
@@ -81,6 +84,8 @@ jobs:
           cd build
           if [ "$RUNNER_OS" = "Windows" ]; then
             ./bench_kernels.exe 5000
+          elif [ "$RUNNER_OS" = "macOS" ]; then
+            DYLD_LIBRARY_PATH=./lib ./bench_kernels 5000
           else
             LD_LIBRARY_PATH=./lib ./bench_kernels 5000
           fi
