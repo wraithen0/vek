@@ -7,9 +7,9 @@ set(VEK_VERSION_MINOR 0)
 set(VEK_VERSION_PATCH 0)
 
 # C standard
-set(C_STANDARD 11)
-set(C_STANDARD_REQUIRED ON)
-set(C_EXTENSIONS OFF)
+set(CMAKE_C_STANDARD 11)
+set(CMAKE_C_STANDARD_REQUIRED ON)
+set(CMAKE_C_EXTENSIONS OFF)
 
 # Default build type
 if(NOT CMAKE_BUILD_TYPE)
@@ -72,7 +72,7 @@ if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64")
         src/x86/avx2.c
     )
 
-    # Per-file SIMD flags using target_compile_options with FILE_SET (CMake 3.16+)
+    # Per-file SIMD flags
     if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
         # SSE2 - baseline for x86_64
         set_source_files_properties(src/x86/sse2.c PROPERTIES COMPILE_FLAGS "-msse2")
@@ -85,26 +85,16 @@ if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64")
             option(VEK_BUILD_AVX512 "Build AVX-512 kernels (requires host support)" OFF)
             if(VEK_BUILD_AVX512)
                 set_source_files_properties(src/x86/avx512.c PROPERTIES COMPILE_FLAGS "-msse2 -mavx -mavx2 -mfma -mavx512f -mavx512vl -mavx512bw -mavx512dq -mavx512vnni -mavx512vpopcntdq")
+                target_sources(vek_static PRIVATE src/x86/avx512.c)
+                target_sources(vek_shared PRIVATE src/x86/avx512.c)
+                # Define macro for tests to know AVX-512 is available
+                target_compile_definitions(vek_static PRIVATE VEK_HAVE_AVX512=1)
+                target_compile_definitions(vek_shared PRIVATE VEK_HAVE_AVX512=1)
             endif()
         endif()
     elseif(CMAKE_C_COMPILER_ID STREQUAL "MSVC")
         set_source_files_properties(src/x86/sse2.c PROPERTIES COMPILE_FLAGS "/arch:SSE2")
         set_source_files_properties(src/x86/avx2.c PROPERTIES COMPILE_FLAGS "/arch:AVX2")
-    endif()
-
-    # Add x86 sources
-    target_sources(vek_static PRIVATE
-        src/x86/sse2.c
-        src/x86/avx2.c
-    )
-    target_sources(vek_shared PRIVATE
-        src/x86/sse2.c
-        src/x86/avx2.c
-    )
-
-    if(UNIX AND NOT APPLE AND VEK_BUILD_AVX512)
-        target_sources(vek_static PRIVATE src/x86/avx512.c)
-        target_sources(vek_shared PRIVATE src/x86/avx512.c)
     endif()
 
 elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|arm64")

@@ -326,24 +326,29 @@ float vek_cosine_i8_avx2(const int8_t *a, const int8_t *b, size_t n)
         __m256i a_vec = _mm256_loadu_si256((const __m256i*)(a + i));
         __m256i b_vec = _mm256_loadu_si256((const __m256i*)(b + i));
 
-        /* dot product */
-        __m256i a_u8 = _mm256_sub_epi8(a_vec, _mm256_set1_epi8(-128));
-        __m256i b_u8 = _mm256_sub_epi8(b_vec, _mm256_set1_epi8(-128));
-        __m256i prod16 = _mm256_maddubs_epi16(a_u8, b_u8);
-        __m256i dot32 = _mm256_madd_epi16(prod16, _mm256_set1_epi16(1));
-        dot_vec = _mm256_add_epi32(dot_vec, dot32);
+        /* dot product: sign-extend int8→int16, madd_epi16 multiply+pairwise-add */
+        __m128i a_lo128 = _mm256_castsi256_si128(a_vec);
+        __m128i a_hi128 = _mm256_extracti128_si256(a_vec, 1);
+        __m256i a_lo = _mm256_cvtepi8_epi16(a_lo128);
+        __m256i a_hi = _mm256_cvtepi8_epi16(a_hi128);
 
-        /* norm a */
-        __m256i a_lo = _mm256_cvtepi8_epi16(_mm256_castsi256_si128(a_vec));
-        __m256i a_hi = _mm256_cvtepi8_epi16(_mm256_extracti128_si256(a_vec, 1));
+        __m128i b_lo128 = _mm256_castsi256_si128(b_vec);
+        __m128i b_hi128 = _mm256_extracti128_si256(b_vec, 1);
+        __m256i b_lo = _mm256_cvtepi8_epi16(b_lo128);
+        __m256i b_hi = _mm256_cvtepi8_epi16(b_hi128);
+
+        __m256i dot_lo = _mm256_madd_epi16(a_lo, b_lo);
+        __m256i dot_hi = _mm256_madd_epi16(a_hi, b_hi);
+        dot_vec = _mm256_add_epi32(dot_vec, dot_lo);
+        dot_vec = _mm256_add_epi32(dot_vec, dot_hi);
+
+        /* norm a — reuse sign-extended a_lo, a_hi from dot product */
         __m256i sq_a_lo = _mm256_madd_epi16(a_lo, a_lo);
         __m256i sq_a_hi = _mm256_madd_epi16(a_hi, a_hi);
         norm_a_vec = _mm256_add_epi32(norm_a_vec, sq_a_lo);
         norm_a_vec = _mm256_add_epi32(norm_a_vec, sq_a_hi);
 
-        /* norm b */
-        __m256i b_lo = _mm256_cvtepi8_epi16(_mm256_castsi256_si128(b_vec));
-        __m256i b_hi = _mm256_cvtepi8_epi16(_mm256_extracti128_si256(b_vec, 1));
+        /* norm b — reuse sign-extended b_lo, b_hi from dot product */
         __m256i sq_b_lo = _mm256_madd_epi16(b_lo, b_lo);
         __m256i sq_b_hi = _mm256_madd_epi16(b_hi, b_hi);
         norm_b_vec = _mm256_add_epi32(norm_b_vec, sq_b_lo);

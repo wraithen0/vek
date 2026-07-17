@@ -58,12 +58,12 @@ uint32_t vek_dot_u8(const uint8_t *a, const uint8_t *b, size_t n);
 int32_t vek_l2sq_i8(const int8_t *a, const int8_t *b, size_t n);
 
 /* uint8 squared L2 distance: sum((a[i] - b[i])^2) - accumulator is uint32 */
-// Quantized int8/uint8 operations (v0.5)
-int32_t vek_dot_i8(const int8_t *a, const int8_t *b, size_t n);
-uint32_t vek_dot_u8(const uint8_t *a, const uint8_t *b, size_t n);
-int32_t vek_l2sq_i8(const int8_t *a, const int8_t *b, size_t n);
 uint32_t vek_l2sq_u8(const uint8_t *a, const uint8_t *b, size_t n);
+
+/* int8 cosine similarity: (a·b) / (||a|| * ||b||) */
 float vek_cosine_i8(const int8_t *a, const int8_t *b, size_t n);
+
+/* uint8 cosine similarity: (a·b) / (||a|| * ||b||) */
 float vek_cosine_u8(const uint8_t *a, const uint8_t *b, size_t n);
 
 // Binary (1-bit) operations (v0.6)

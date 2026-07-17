@@ -63,7 +63,11 @@ static void dispatch_init(void)
 
 #if defined(__x86_64__) || defined(_M_X64)
     if (cpu_has_avx512f_runtime()) {
+#ifdef VEK_HAVE_AVX512
         dispatch_init_avx512();
+#else
+        dispatch_init_avx2();
+#endif
     }
     else if (cpu_has_avx2_runtime()) {
         dispatch_init_avx2();
@@ -125,7 +129,8 @@ uint32_t vek_l2sq_u8_avx2(const uint8_t*, const uint8_t*, size_t);
 float vek_cosine_i8_avx2(const int8_t*, const int8_t*, size_t);
 float vek_cosine_u8_avx2(const uint8_t*, const uint8_t*, size_t);
 
-/* AVX-512 backend */
+/* AVX-512 backend - only if compiled in */
+#ifdef VEK_HAVE_AVX512
 float vek_dot_f32_avx512(const float*, const float*, size_t);
 float vek_l2sq_f32_avx512(const float*, const float*, size_t);
 float vek_cosine_f32_avx512(const float*, const float*, size_t);
@@ -142,6 +147,7 @@ float vek_cosine_u8_avx512(const uint8_t*, const uint8_t*, size_t);
 int32_t vek_dot_b1_avx512(const uint64_t*, const uint64_t*, size_t);
 int32_t vek_hamming_b1_avx512(const uint64_t*, const uint64_t*, size_t);
 float vek_cosine_b1_avx512(const uint64_t*, const uint64_t*, size_t);
+#endif
 #endif
 
 /* NEON backend (ARM64) */
@@ -333,6 +339,7 @@ static void dispatch_init_avx2(void)
     g_dispatch.name       = "avx2";
 }
 
+#ifdef VEK_HAVE_AVX512
 static void dispatch_init_avx512(void)
 {
     g_dispatch.dot_f32    = vek_dot_f32_avx512;
@@ -349,6 +356,7 @@ static void dispatch_init_avx512(void)
     g_dispatch.cosine_b1  = vek_cosine_b1_avx512;
     g_dispatch.name       = "avx512";
 }
+#endif
 #endif
 
 #if defined(__aarch64__) || defined(_M_ARM64)

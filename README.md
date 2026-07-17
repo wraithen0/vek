@@ -205,20 +205,11 @@ This benchmarks `vek` (AVX-512 path) against `faiss` (via NumPy), `usearch` (via
 | 8192 | 6085 | 1760 | 1525 | **1199** | 5832 | 10388 | 10312 | **1219** | 5994 | 6423 | 6015 | **1303** |
 
 **Key findings on this machine:**
-- `vek` dominates dot product and L2 distance at all sizes
+- `simsimd` is fastest across all operations and sizes (bolded in table)
+- `vek` is competitive with `faiss`/`usearch` on dot product and L2 at larger sizes
 - `simsimd` has a faster specialized cosine for small vectors
-- `vek` beats NumPy (faiss/usearch proxy) on small/medium vectors
 - The SSE2 baseline compiles cleanly with `-msse2` only (no AVX flags)
-
-### Benchmarks
-
-This benchmarks `vek` (AVX-512 path on this host) against `simsimd` and NumPy across dot product, L2 distance, and cosine similarity for vector sizes 32–8192.
-
-On this machine (Intel i5-1135G7 @ 2.4 GHz, AVX-512), typical findings:
-- `vek` dominates dot product and L2 distance at all sizes
-- `simsimd` has a faster specialized cosine for small vectors
-- `vek` beats NumPy on small/medium vectors
-- The SSE2 baseline compiles cleanly with `-msse2` only (no AVX flags)
+- The internal per-file SIMD dispatch (`-msse2` / `-mavx2 -mfma` / `-mavx512f`) works correctly
 
 ## Roadmap
 
