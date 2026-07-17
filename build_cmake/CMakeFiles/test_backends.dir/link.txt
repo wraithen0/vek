@@ -1,1 +1,0 @@
-/usr/bin/cc -O3 -DNDEBUG "-Wl,-rpath,'\$ORIGIN/../lib'" -Wl,--dependency-file=CMakeFiles/test_backends.dir/link.d CMakeFiles/test_backends.dir/tests/test_backends.c.o -o bin/test_backends  -Wl,-rpath,./lib:/home/pulseonix/Documents/build/vek/build_cmake/lib lib/libvek_shared.so -lm
