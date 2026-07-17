@@ -49,6 +49,13 @@ set(VEK_BASE_COMPILE_OPTIONS
 target_compile_options(vek_static PRIVATE ${VEK_BASE_COMPILE_OPTIONS} -DVEK_BUILD_STATIC)
 target_compile_options(vek_shared PRIVATE ${VEK_BASE_COMPILE_OPTIONS} -DVEK_BUILD_SHARED)
 
+# RPATH for finding libvek.so at runtime
+if(UNIX AND NOT APPLE)
+    target_link_options(vek_shared PRIVATE -Wl,-rpath,'$ORIGIN/../lib')
+elseif(APPLE)
+    target_link_options(vek_shared PRIVATE -Wl,-rpath,'@loader_path/../lib')
+endif()
+
 # Alias for convenience
 add_library(vek::vek ALIAS vek_shared)
 add_library(vek::static ALIAS vek_static)
@@ -116,15 +123,30 @@ enable_testing()
 
 add_executable(test_kernels tests/test_kernels.c)
 target_link_libraries(test_kernels PRIVATE vek_shared m)
+if(UNIX AND NOT APPLE)
+    target_link_options(test_kernels PRIVATE -Wl,-rpath,'$ORIGIN/../lib')
+elseif(APPLE)
+    target_link_options(test_kernels PRIVATE -Wl,-rpath,'@loader_path/../lib')
+endif()
 add_test(NAME test_kernels COMMAND test_kernels)
 
 add_executable(test_backends tests/test_backends.c)
 target_link_libraries(test_backends PRIVATE vek_shared m)
+if(UNIX AND NOT APPLE)
+    target_link_options(test_backends PRIVATE -Wl,-rpath,'$ORIGIN/../lib')
+elseif(APPLE)
+    target_link_options(test_backends PRIVATE -Wl,-rpath,'@loader_path/../lib')
+endif()
 add_test(NAME test_backends COMMAND test_backends)
 
 # --- Benchmarks ---
 add_executable(bench_kernels bench/bench_kernels.c)
 target_link_libraries(bench_kernels PRIVATE vek_shared m)
+if(UNIX AND NOT APPLE)
+    target_link_options(bench_kernels PRIVATE -Wl,-rpath,'$ORIGIN/../lib')
+elseif(APPLE)
+    target_link_options(bench_kernels PRIVATE -Wl,-rpath,'@loader_path/../lib')
+endif()
 
 # --- Install ---
 install(TARGETS vek_static vek_shared
