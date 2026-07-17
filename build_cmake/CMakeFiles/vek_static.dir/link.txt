@@ -1,0 +1,2 @@
+/usr/bin/ar qc lib/libvek_static.a CMakeFiles/vek_static.dir/src/scalar/kernels.c.o CMakeFiles/vek_static.dir/src/dispatch.c.o CMakeFiles/vek_static.dir/src/x86/sse2.c.o CMakeFiles/vek_static.dir/src/x86/avx2.c.o
+/usr/bin/ranlib lib/libvek_static.a

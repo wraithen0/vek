@@ -1,0 +1,1 @@
+/usr/bin/cc -fPIC -O3 -DNDEBUG -shared "-Wl,-rpath,'\$ORIGIN/../lib'" -Wl,--dependency-file=CMakeFiles/vek_shared.dir/link.d -Wl,-soname,libvek_shared.so -o lib/libvek_shared.so CMakeFiles/vek_shared.dir/src/scalar/kernels.c.o CMakeFiles/vek_shared.dir/src/dispatch.c.o CMakeFiles/vek_shared.dir/src/x86/sse2.c.o CMakeFiles/vek_shared.dir/src/x86/avx2.c.o  -Wl,-rpath,./lib:
