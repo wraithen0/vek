@@ -585,7 +585,12 @@ int32_t vek_dot_b1_avx512(const uint64_t *a, const uint64_t *b, size_t n)
 
     __m512i sum_vec = _mm512_setzero_epi32();
 
-    for (; i + simd_width <= words; i += simd_width) {
+    /* SIMD over complete 8-word blocks. If the final word has padding
+     * (n not a multiple of 64), leave it for the scalar tail to mask. */
+    uint64_t rem = n & 63;
+    size_t simd_words = (rem != 0) ? ((words - 1) / simd_width) * simd_width
+                                    : (words / simd_width) * simd_width;
+    for (; i + simd_width <= simd_words; i += simd_width) {
         __m512i a_vec = _mm512_loadu_si512((const __m512i*)(a + i));
         __m512i b_vec = _mm512_loadu_si512((const __m512i*)(b + i));
 
@@ -594,15 +599,26 @@ int32_t vek_dot_b1_avx512(const uint64_t *a, const uint64_t *b, size_t n)
         xnor = _mm512_ternarylogic_epi64(xnor, _mm512_set1_epi64(0), _mm512_set1_epi64(0), 0xFF); // NOT
         __m512i popcnt = _mm512_popcnt_epi64(xnor);
 
-        /* Horizontal sum across 8 lanes of 64-bit popcnts */
-        __m256i popcnt32 = _mm512_cvtepi64_epi32(popcnt);
-        sum_vec = _mm512_add_epi32(sum_vec, _mm512_inserti32x8(_mm512_castsi256_si512(popcnt32), _mm256_setzero_si256(), 1));
+        /* Horizontal sum across 8 lanes of 64-bit popcnts:
+         * - low 4 lanes (0-3) are in lower 256 bits
+         * - high 4 lanes (4-7) are in upper 256 bits
+         */
+        __m256i popcnt_lo = _mm512_castsi512_si256(popcnt);
+        __m256i popcnt_hi = _mm512_castsi512_si256(_mm512_shuffle_i32x4(popcnt, popcnt, 0xFF));
+        __m128i popcnt32_lo = _mm256_cvtepi64_epi32(popcnt_lo);
+        __m128i popcnt32_hi = _mm256_cvtepi64_epi32(popcnt_hi);
+        __m512i popcnt32_8 = _mm512_inserti32x4(_mm512_inserti32x4(_mm512_setzero_epi32(), popcnt32_lo, 0), popcnt32_hi, 1);
+        sum_vec = _mm512_add_epi32(sum_vec, popcnt32_8);
     }
 
     int32_t sum_scalar = _mm512_reduce_add_epi32(sum_vec);
 
+    /* Scalar tail: words [i, words). Mask padding bits in the final word. */
+    uint64_t mask = (rem == 0) ? ~0ULL : ((1ULL << rem) - 1ULL);
     for (; i < words; i++) {
-        sum_scalar += __builtin_popcountll(~(a[i] ^ b[i]));
+        uint64_t xnor = ~(a[i] ^ b[i]);
+        if (i == words - 1) xnor &= mask; /* ignore padding bits past n */
+        sum_scalar += __builtin_popcountll(xnor);
     }
 
     return sum_scalar;
@@ -616,7 +632,10 @@ int32_t vek_hamming_b1_avx512(const uint64_t *a, const uint64_t *b, size_t n)
 
     __m512i sum_vec = _mm512_setzero_epi32();
 
-    for (; i + simd_width <= words; i += simd_width) {
+    /* SIMD over complete 8-word blocks only; final partial block handled by
+     * the scalar tail below (which masks padding bits past n). */
+    size_t simd_words = (words / simd_width) * simd_width;
+    for (; i + simd_width <= simd_words; i += simd_width) {
         __m512i a_vec = _mm512_loadu_si512((const __m512i*)(a + i));
         __m512i b_vec = _mm512_loadu_si512((const __m512i*)(b + i));
 
@@ -624,14 +643,27 @@ int32_t vek_hamming_b1_avx512(const uint64_t *a, const uint64_t *b, size_t n)
         __m512i xor_vec = _mm512_xor_epi64(a_vec, b_vec);
         __m512i popcnt = _mm512_popcnt_epi64(xor_vec);
 
-        __m256i popcnt32 = _mm512_cvtepi64_epi32(popcnt);
-        sum_vec = _mm512_add_epi32(sum_vec, _mm512_inserti32x8(_mm512_castsi256_si512(popcnt32), _mm256_setzero_si256(), 1));
+        /* Horizontal sum across 8 lanes of 64-bit popcnts:
+         * - low 4 lanes (0-3) are in lower 256 bits
+         * - high 4 lanes (4-7) are in upper 256 bits
+         */
+        __m256i popcnt_lo = _mm512_castsi512_si256(popcnt);
+        __m256i popcnt_hi = _mm512_castsi512_si256(_mm512_shuffle_i32x4(popcnt, popcnt, 0xFF));
+        __m128i popcnt32_lo = _mm256_cvtepi64_epi32(popcnt_lo);
+        __m128i popcnt32_hi = _mm256_cvtepi64_epi32(popcnt_hi);
+        __m512i popcnt32_8 = _mm512_inserti32x4(_mm512_inserti32x4(_mm512_setzero_epi32(), popcnt32_lo, 0), popcnt32_hi, 1);
+        sum_vec = _mm512_add_epi32(sum_vec, popcnt32_8);
     }
 
     int32_t sum_scalar = _mm512_reduce_add_epi32(sum_vec);
 
+    /* Scalar tail: words [i, words). Mask padding bits in the final word. */
+    uint64_t rem = n & 63;
+    uint64_t mask = (rem == 0) ? ~0ULL : ((1ULL << rem) - 1ULL);
     for (; i < words; i++) {
-        sum_scalar += __builtin_popcountll(a[i] ^ b[i]);
+        uint64_t xor_bits = a[i] ^ b[i];
+        if (i == words - 1) xor_bits &= mask; /* ignore padding bits past n */
+        sum_scalar += __builtin_popcountll(xor_bits);
     }
 
     return sum_scalar;
@@ -647,36 +679,56 @@ float vek_cosine_b1_avx512(const uint64_t *a, const uint64_t *b, size_t n)
     __m512i norm_a_vec = _mm512_setzero_epi32();
     __m512i norm_b_vec = _mm512_setzero_epi32();
 
-    for (; i + simd_width <= words; i += simd_width) {
+    /* SIMD over complete 8-word blocks. If the final word has padding
+     * (n not a multiple of 64), leave it for the scalar tail to mask. */
+    uint64_t rem = n & 63;
+    size_t simd_words = (rem != 0) ? ((words - 1) / simd_width) * simd_width
+                                    : (words / simd_width) * simd_width;
+    for (; i + simd_width <= simd_words; i += simd_width) {
         __m512i a_vec = _mm512_loadu_si512((const __m512i*)(a + i));
         __m512i b_vec = _mm512_loadu_si512((const __m512i*)(b + i));
 
         /* dot product via AND + popcnt */
         __m512i and_vec = _mm512_and_epi64(a_vec, b_vec);
         __m512i popcnt = _mm512_popcnt_epi64(and_vec);
-        __m256i popcnt32 = _mm512_cvtepi64_epi32(popcnt);
-        dot_vec = _mm512_add_epi32(dot_vec, _mm512_inserti32x8(_mm512_castsi256_si512(popcnt32), _mm256_setzero_si256(), 1));
+        __m256i popcnt_lo = _mm512_castsi512_si256(popcnt);
+        __m256i popcnt_hi = _mm512_castsi512_si256(_mm512_shuffle_i32x4(popcnt, popcnt, 0xFF));
+        __m128i popcnt32_lo = _mm256_cvtepi64_epi32(popcnt_lo);
+        __m128i popcnt32_hi = _mm256_cvtepi64_epi32(popcnt_hi);
+        __m512i popcnt32_8 = _mm512_inserti32x4(_mm512_inserti32x4(_mm512_setzero_epi32(), popcnt32_lo, 0), popcnt32_hi, 1);
+        dot_vec = _mm512_add_epi32(dot_vec, popcnt32_8);
 
         /* norm a */
         __m512i pop_a = _mm512_popcnt_epi64(a_vec);
-        __m256i pop_a32 = _mm512_cvtepi64_epi32(pop_a);
-        norm_a_vec = _mm512_add_epi32(norm_a_vec, _mm512_inserti32x8(_mm512_castsi256_si512(pop_a32), _mm256_setzero_si256(), 1));
+        __m256i pop_a_lo = _mm512_castsi512_si256(pop_a);
+        __m256i pop_a_hi = _mm512_castsi512_si256(_mm512_shuffle_i32x4(pop_a, pop_a, 0xFF));
+        __m128i pop_a32_lo = _mm256_cvtepi64_epi32(pop_a_lo);
+        __m128i pop_a32_hi = _mm256_cvtepi64_epi32(pop_a_hi);
+        __m512i pop_a32_8 = _mm512_inserti32x4(_mm512_inserti32x4(_mm512_setzero_epi32(), pop_a32_lo, 0), pop_a32_hi, 1);
+        norm_a_vec = _mm512_add_epi32(norm_a_vec, pop_a32_8);
 
         /* norm b */
         __m512i pop_b = _mm512_popcnt_epi64(b_vec);
-        __m256i pop_b32 = _mm512_cvtepi64_epi32(pop_b);
-        norm_b_vec = _mm512_add_epi32(norm_b_vec, _mm512_inserti32x8(_mm512_castsi256_si512(pop_b32), _mm256_setzero_si256(), 1));
+        __m256i pop_b_lo = _mm512_castsi512_si256(pop_b);
+        __m256i pop_b_hi = _mm512_castsi512_si256(_mm512_shuffle_i32x4(pop_b, pop_b, 0xFF));
+        __m128i pop_b32_lo = _mm256_cvtepi64_epi32(pop_b_lo);
+        __m128i pop_b32_hi = _mm256_cvtepi64_epi32(pop_b_hi);
+        __m512i pop_b32_8 = _mm512_inserti32x4(_mm512_inserti32x4(_mm512_setzero_epi32(), pop_b32_lo, 0), pop_b32_hi, 1);
+        norm_b_vec = _mm512_add_epi32(norm_b_vec, pop_b32_8);
     }
 
     int32_t dot_scalar = _mm512_reduce_add_epi32(dot_vec);
     int32_t norm_a_scalar = _mm512_reduce_add_epi32(norm_a_vec);
     int32_t norm_b_scalar = _mm512_reduce_add_epi32(norm_b_vec);
 
+    /* Scalar tail: words [i, words). Mask padding bits in the final word. */
+    uint64_t mask = (rem == 0) ? ~0ULL : ((1ULL << rem) - 1ULL);
     for (; i < words; i++) {
-        uint64_t and_bits = a[i] & b[i];
-        dot_scalar += __builtin_popcountll(and_bits);
-        norm_a_scalar += __builtin_popcountll(a[i]);
-        norm_b_scalar += __builtin_popcountll(b[i]);
+        uint64_t av = a[i], bv = b[i];
+        if (i == words - 1) { av &= mask; bv &= mask; }
+        dot_scalar += __builtin_popcountll(av & bv);
+        norm_a_scalar += __builtin_popcountll(av);
+        norm_b_scalar += __builtin_popcountll(bv);
     }
 
     if (norm_a_scalar == 0 || norm_b_scalar == 0) return 0.0f;
