@@ -472,7 +472,7 @@ float vek_cosine_u8_neon(const uint8_t *a, const uint8_t *b, size_t n)
 
     return (float)dot_scalar / (norm_a_sqrt * norm_b_sqrt);
 }
-/* ===== Binary (1-bit) variants (NEON) ===== */
+/* Binary (1-bit) variants (NEON) ===== */
 
 int32_t vek_dot_b1_neon(const uint64_t *a, const uint64_t *b, size_t n)
 {
@@ -486,9 +486,8 @@ int32_t vek_dot_b1_neon(const uint64_t *a, const uint64_t *b, size_t n)
         uint64x2_t a_vec = vld1q_u64(a + i);
         uint64x2_t b_vec = vld1q_u64(b + i);
 
-        uint64x2_t xor_vec = veorq_u64(a_vec, b_vec);
-        uint64x2_t xnor = vmvnq_u64(xor_vec);
-        uint8x16_t popcnt = vcntq_u8(vreinterpretq_u8_u64(xnor));
+        uint64x2_t and_vec = vandq_u64(a_vec, b_vec);
+        uint8x16_t popcnt = vcntq_u8(vreinterpretq_u8_u64(and_vec));
         uint16x8_t popcnt16 = vpaddlq_u8(popcnt);
         uint32x4_t popcnt32 = vpaddlq_u16(popcnt16);
         int32x4_t popcnt32s = vreinterpretq_s32_u32(popcnt32);
@@ -504,8 +503,12 @@ int32_t vek_dot_b1_neon(const uint64_t *a, const uint64_t *b, size_t n)
 
     /* Tail */
     size_t words = (n + 63) / 64;
+    uint64_t rem = n & 63;
+    uint64_t mask = (rem == 0) ? ~0ULL : ((1ULL << rem) - 1ULL);
     for (size_t i = 0; i < words; i++) {
-        sum_scalar += __builtin_popcountll(~(a[i] ^ b[i]));
+        uint64_t and_bits = a[i] & b[i];
+        if (i == words - 1) and_bits &= mask; /* ignore padding bits past n */
+        sum_scalar += __builtin_popcountll(and_bits);
     }
 
     return sum_scalar;
@@ -519,7 +522,7 @@ int32_t vek_hamming_b1_neon(const uint64_t *a, const uint64_t *b, size_t n)
 
     int32x4_t sum_vec = vdupq_n_s32(0);
 
-    for (; i + simd_width <= (n + 63) / 64; i += simd_width) {
+    for (; i + simd_width <= words; i += simd_width) {
         uint64x2_t a_vec = vld1q_u64(a + i);
         uint64x2_t b_vec = vld1q_u64(b + i);
 
@@ -538,9 +541,14 @@ int32_t vek_hamming_b1_neon(const uint64_t *a, const uint64_t *b, size_t n)
     int32x2_t sum = vpadd_s32(sum_lo, sum_hi);
     int32_t sum_scalar = vget_lane_s32(vpadd_s32(sum, sum), 0);
 
+    /* Tail - XOR + popcount for hamming distance */
     size_t words = (n + 63) / 64;
+    uint64_t rem = n & 63;
+    uint64_t mask = (rem == 0) ? ~0ULL : ((1ULL << rem) - 1ULL);
     for (size_t i = 0; i < words; i++) {
-        sum_scalar += __builtin_popcountll(a[i] ^ b[i]);
+        uint64_t xor_bits = a[i] ^ b[i];
+        if (i == words - 1) xor_bits &= mask; /* ignore padding bits past n */
+        sum_scalar += __builtin_popcountll(xor_bits);
     }
 
     return sum_scalar;
@@ -560,31 +568,27 @@ float vek_cosine_b1_neon(const uint64_t *a, const uint64_t *b, size_t n)
         uint64x2_t a_vec = vld1q_u64(a + i);
         uint64x2_t b_vec = vld1q_u64(b + i);
 
-        /* dot product via XNOR + popcnt */
-        uint64x2_t xor_vec = veorq_u64(a_vec, b_vec);
-        uint64x2_t xnor = vmvnq_u64(xor_vec);
-        uint8x16_t popcnt = vcntq_u8(vreinterpretq_u8_u64(xnor));
-        uint16x8_t popcnt16 = vpaddlq_u8(popcnt);
-        uint32x4_t popcnt32 = vpaddlq_u16(popcnt16);
-        int32x4_t popcnt32s = vreinterpretq_s32_u32(popcnt32);
+        uint64x2_t and_vec = vandq_u64(a_vec, b_vec);
+        uint8x16_t dot_popcnt = vcntq_u8(vreinterpretq_u8_u64(and_vec));
+        uint16x8_t dot_popcnt16 = vpaddlq_u8(dot_popcnt);
+        uint32x4_t dot_popcnt32 = vpaddlq_u16(dot_popcnt16);
+        int32x4_t dot_popcnt32s = vreinterpretq_s32_u32(dot_popcnt32);
 
-        dot_vec = vaddq_s32(dot_vec, popcnt32s);
+        dot_vec = vaddq_s32(dot_vec, dot_popcnt32s);
 
-        /* norm a */
-        uint8x16_t pop_a = vcntq_u8(vreinterpretq_u8_u64(a_vec));
-        uint16x8_t pop_a16 = vpaddlq_u8(pop_a);
-        uint32x4_t pop_a32 = vpaddlq_u16(pop_a16);
-        int32x4_t pop_a32s = vreinterpretq_s32_u32(pop_a32);
+        uint8x16_t a_popcnt = vcntq_u8(vreinterpretq_u8_u64(a_vec));
+        uint16x8_t a_popcnt16 = vpaddlq_u8(a_popcnt);
+        uint32x4_t a_popcnt32 = vpaddlq_u16(a_popcnt16);
+        int32x4_t a_popcnt32s = vreinterpretq_s32_u32(a_popcnt32);
 
-        norm_a_vec = vaddq_s32(norm_a_vec, pop_a32s);
+        norm_a_vec = vaddq_s32(norm_a_vec, a_popcnt32s);
 
-        /* norm b */
-        uint8x16_t pop_b = vcntq_u8(vreinterpretq_u8_u64(b_vec));
-        uint16x8_t pop_b16 = vpaddlq_u8(pop_b);
-        uint32x4_t pop_b32 = vpaddlq_u16(pop_b16);
-        int32x4_t pop_b32s = vreinterpretq_s32_u32(pop_b32);
+        uint8x16_t b_popcnt = vcntq_u8(vreinterpretq_u8_u64(b_vec));
+        uint16x8_t b_popcnt16 = vpaddlq_u8(b_popcnt);
+        uint32x4_t b_popcnt32 = vpaddlq_u16(b_popcnt16);
+        int32x4_t b_popcnt32s = vreinterpretq_s32_u32(b_popcnt32);
 
-        norm_b_vec = vaddq_s32(norm_b_vec, pop_b32s);
+        norm_b_vec = vaddq_s32(norm_b_vec, b_popcnt32s);
     }
 
     /* Horizontal sums */
@@ -603,13 +607,17 @@ float vek_cosine_b1_neon(const uint64_t *a, const uint64_t *b, size_t n)
     int32x2_t nb = vpadd_s32(nb_lo, nb_hi);
     int32_t norm_b_scalar = vget_lane_s32(vpadd_s32(nb, nb), 0);
 
-    /* Tail */
+    /* Tail - AND + popcount for dot, popcount for norms */
     size_t words = (n + 63) / 64;
+    uint64_t rem = n & 63;
+    uint64_t mask = (rem == 0) ? ~0ULL : ((1ULL << rem) - 1ULL);
     for (size_t i = 0; i < words; i++) {
-        uint64_t xnor = ~(a[i] ^ b[i]);
-        dot_scalar += __builtin_popcountll(xnor);
-        norm_a_scalar += __builtin_popcountll(a[i]);
-        norm_b_scalar += __builtin_popcountll(b[i]);
+        uint64_t av = a[i], bv = b[i];
+        if (i == words - 1) { av &= mask; bv &= mask; } /* ignore padding bits past n */
+        uint64_t and_bits = av & bv;
+        dot_scalar += __builtin_popcountll(and_bits);
+        norm_a_scalar += __builtin_popcountll(av);
+        norm_b_scalar += __builtin_popcountll(bv);
     }
 
     float norm_a_sqrt = sqrtf((float)norm_a_scalar);

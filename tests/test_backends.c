@@ -45,6 +45,7 @@ extern uint32_t vek_l2sq_u8_avx2(const uint8_t*, const uint8_t*, size_t);
 extern float vek_cosine_i8_avx2(const int8_t*, const int8_t*, size_t);
 extern float vek_cosine_u8_avx2(const uint8_t*, const uint8_t*, size_t);
 
+#ifdef VEK_HAVE_AVX512
 extern float vek_dot_f32_avx512(const float*, const float*, size_t);
 extern float vek_l2sq_f32_avx512(const float*, const float*, size_t);
 extern float vek_cosine_f32_avx512(const float*, const float*, size_t);
@@ -55,6 +56,12 @@ extern int32_t vek_l2sq_i8_avx512(const int8_t*, const int8_t*, size_t);
 extern uint32_t vek_l2sq_u8_avx512(const uint8_t*, const uint8_t*, size_t);
 extern float vek_cosine_i8_avx512(const int8_t*, const int8_t*, size_t);
 extern float vek_cosine_u8_avx512(const uint8_t*, const uint8_t*, size_t);
+
+/* Binary (1-bit) AVX-512 */
+extern int32_t vek_dot_b1_avx512(const uint64_t*, const uint64_t*, size_t);
+extern int32_t vek_hamming_b1_avx512(const uint64_t*, const uint64_t*, size_t);
+extern float vek_cosine_b1_avx512(const uint64_t*, const uint64_t*, size_t);
+#endif
 #endif
 
 #if defined(__aarch64__) || defined(_M_ARM64)
@@ -76,6 +83,74 @@ extern int32_t vek_hamming_b1_scalar(const uint64_t*, const uint64_t*, size_t);
 extern float vek_cosine_b1_scalar(const uint64_t*, const uint64_t*, size_t);
 
 #if defined(__x86_64__) || defined(_M_X64)
+/* CPU feature detection for x86_64 */
+#if defined(_MSC_VER)
+#include <intrin.h>
+static int cpu_has_avx512f(void) {
+    int cpu_info[4];
+    __cpuid(cpu_info, 7);
+    return (cpu_info[1] & (1u << 16)) != 0; /* AVX512F bit */
+}
+static int cpu_has_avx512vnni(void) {
+    int cpu_info[4];
+    __cpuid(cpu_info, 7);
+    return (cpu_info[2] & (1u << 11)) != 0; /* AVX512VNNI bit */
+}
+static int cpu_has_avx512vpopcntdq(void) {
+    int cpu_info[4];
+    __cpuid(cpu_info, 7);
+    return (cpu_info[2] & (1u << 14)) != 0; /* AVX512VPOPCNTDQ bit */
+}
+static int cpu_has_osxsave(void) {
+    int cpu_info[4];
+    __cpuid(cpu_info, 1);
+    return (cpu_info[2] & (1u << 27)) != 0; /* OSXSAVE bit */
+}
+static unsigned long long xgetbv(unsigned int index) {
+    return _xgetbv(index);
+}
+#else
+static void cpuid(int eax, int ecx, uint32_t *out_eax, uint32_t *out_ebx,
+                  uint32_t *out_ecx, uint32_t *out_edx) {
+    __asm__ volatile("cpuid"
+                     : "=a"(*out_eax), "=b"(*out_ebx), "=c"(*out_ecx), "=d"(*out_edx)
+                     : "a"(eax), "c"(ecx));
+}
+static int cpu_has_avx512f(void) {
+    uint32_t eax, ebx, ecx, edx;
+    cpuid(7, 0, &eax, &ebx, &ecx, &edx);
+    return (ebx & (1u << 16)) != 0;
+}
+static int cpu_has_avx512vnni(void) {
+    uint32_t eax, ebx, ecx, edx;
+    cpuid(7, 0, &eax, &ebx, &ecx, &edx);
+    return (ecx & (1u << 11)) != 0;
+}
+static int cpu_has_avx512vpopcntdq(void) {
+    uint32_t eax, ebx, ecx, edx;
+    cpuid(7, 0, &eax, &ebx, &ecx, &edx);
+    return (ecx & (1u << 14)) != 0;
+}
+static int cpu_has_osxsave(void) {
+    uint32_t eax, ebx, ecx, edx;
+    cpuid(1, 0, &eax, &ebx, &ecx, &edx);
+    return (ecx & (1u << 27)) != 0;
+}
+static unsigned long long xgetbv(unsigned int index) {
+    unsigned int eax, edx;
+    __asm__ volatile("xgetbv" : "=a"(eax), "=d"(edx) : "c"(index));
+    return ((unsigned long long)edx << 32) | eax;
+}
+#endif
+static int cpu_has_avx512_runtime(void) {
+    if (!cpu_has_osxsave()) return 0;
+    unsigned long long xcr0 = xgetbv(0);
+    if ((xcr0 & 0xe6) != 0xe6) return 0; /* XMM, YMM, ZMM, opmask */
+    if (!cpu_has_avx512f()) return 0;
+    if (!cpu_has_avx512vnni()) return 0;
+    if (!cpu_has_avx512vpopcntdq()) return 0;
+    return 1;
+}
 /* Binary (1-bit) SSE2 - fallback to scalar */
 extern int32_t vek_dot_b1_sse2(const uint64_t*, const uint64_t*, size_t);
 extern int32_t vek_hamming_b1_sse2(const uint64_t*, const uint64_t*, size_t);
@@ -87,9 +162,11 @@ extern int32_t vek_hamming_b1_avx2(const uint64_t*, const uint64_t*, size_t);
 extern float vek_cosine_b1_avx2(const uint64_t*, const uint64_t*, size_t);
 
 /* Binary (1-bit) AVX-512 */
+#ifdef VEK_HAVE_AVX512
 extern int32_t vek_dot_b1_avx512(const uint64_t*, const uint64_t*, size_t);
 extern int32_t vek_hamming_b1_avx512(const uint64_t*, const uint64_t*, size_t);
 extern float vek_cosine_b1_avx512(const uint64_t*, const uint64_t*, size_t);
+#endif
 #endif
 
 #if defined(__aarch64__) || defined(_M_ARM64)
@@ -478,12 +555,18 @@ int main(void)
         vek_dot_u8_avx2, vek_l2sq_u8_avx2, vek_cosine_u8_avx2,
         vek_dot_b1_avx2, vek_hamming_b1_avx2, vek_cosine_b1_avx2);
 
-    /* Test AVX-512 */
-    RUN_BACKEND_TESTS(avx512,
-        vek_dot_f32_avx512, vek_l2sq_f32_avx512, vek_cosine_f32_avx512,
-        vek_dot_i8_avx512, vek_l2sq_i8_avx512, vek_cosine_i8_avx512,
-        vek_dot_u8_avx512, vek_l2sq_u8_avx512, vek_cosine_u8_avx512,
-        vek_dot_b1_avx512, vek_hamming_b1_avx512, vek_cosine_b1_avx512);
+    /* Test AVX-512 - only if compiled in AND CPU supports it at runtime */
+#ifdef VEK_HAVE_AVX512
+    if (cpu_has_avx512_runtime()) {
+        RUN_BACKEND_TESTS(avx512,
+            vek_dot_f32_avx512, vek_l2sq_f32_avx512, vek_cosine_f32_avx512,
+            vek_dot_i8_avx512, vek_l2sq_i8_avx512, vek_cosine_i8_avx512,
+            vek_dot_u8_avx512, vek_l2sq_u8_avx512, vek_cosine_u8_avx512,
+            vek_dot_b1_avx512, vek_hamming_b1_avx512, vek_cosine_b1_avx512);
+    } else {
+        printf("\n=== SKIPPED: avx512 (CPU lacks AVX-512F/VNNI/VPOPCNTDQ or OS support) ===\n");
+    }
+#endif
 #endif
 
 #if defined(__aarch64__) || defined(_M_ARM64)
