@@ -40,10 +40,14 @@ target_include_directories(vek_shared PUBLIC
     $<INSTALL_INTERFACE:include>
 )
 
-# Base compile options
-set(VEK_BASE_COMPILE_OPTIONS 
-    -std=c11 -O3 -Wall -Wextra -pedantic -fPIC
-)
+# Base compile options - MSVC needs different flags
+if(MSVC)
+    set(VEK_BASE_COMPILE_OPTIONS /W4)
+else()
+    set(VEK_BASE_COMPILE_OPTIONS
+        -std=c11 -O3 -Wall -Wextra -pedantic -fPIC
+    )
+endif()
 
 # Apply base options to both targets
 target_compile_options(vek_static PRIVATE ${VEK_BASE_COMPILE_OPTIONS} -DVEK_BUILD_STATIC)
@@ -80,14 +84,17 @@ if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64")
         # AVX2 + FMA
         set_source_files_properties(src/x86/avx2.c PROPERTIES COMPILE_FLAGS "-msse2 -mavx -mavx2 -mfma")
         
-        # AVX-512 (Linux only, optional)
+        # AVX-512 (Linux only). Enabled by default: extra ISA object code is
+        # harmless, and the runtime CPUID check in dispatch.c still gates
+        # whether the AVX-512 path is *used*. Set -DVEK_BUILD_AVX512=OFF to
+        # exclude it (e.g. on hosts without AVX-512 toolchain support).
         if(UNIX AND NOT APPLE)
-            option(VEK_BUILD_AVX512 "Build AVX-512 kernels (requires host support)" OFF)
+            option(VEK_BUILD_AVX512 "Build AVX-512 kernels (requires host support)" ON)
             if(VEK_BUILD_AVX512)
                 set_source_files_properties(src/x86/avx512.c PROPERTIES COMPILE_FLAGS "-msse2 -mavx -mavx2 -mfma -mavx512f -mavx512vl -mavx512bw -mavx512dq -mavx512vnni -mavx512vpopcntdq")
                 target_sources(vek_static PRIVATE src/x86/avx512.c)
                 target_sources(vek_shared PRIVATE src/x86/avx512.c)
-                # Define macro for tests to know AVX-512 is available
+                # Define macro for dispatch + tests to know AVX-512 is available
                 target_compile_definitions(vek_static PRIVATE VEK_HAVE_AVX512=1)
                 target_compile_definitions(vek_shared PRIVATE VEK_HAVE_AVX512=1)
             endif()
