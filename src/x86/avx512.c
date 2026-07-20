@@ -122,8 +122,9 @@ int32_t vek_dot_i8_avx512(const int8_t *a, const int8_t *b, size_t n)
         __m512i a_vec = _mm512_loadu_si512((const __m512i*)(a + i));
         __m512i b_vec = _mm512_loadu_si512((const __m512i*)(b + i));
 
-        /* Bias a by +128 to convert to unsigned range for VNNI */
-        __m512i a_biased = _mm512_add_epi8(a_vec, _mm512_set1_epi8(128));
+        /* Bias a by +128 to convert to unsigned range for VNNI.
+         * Use 0x80 byte pattern to avoid signed char overflow (128 -> -128). */
+        __m512i a_biased = _mm512_add_epi8(a_vec, _mm512_set1_epi8(-128));
         sum_vec = _mm512_dpbusd_epi32(sum_vec, a_biased, b_vec);
 
         /* Accumulate sum(b) for correction term - use 128-bit extracts */

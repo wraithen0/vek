@@ -1,41 +1,49 @@
-# Build artifacts
-*.o
-*.a
+# Build output
+build*/
+cmake-build*/
+_build*/
+build_cmake/
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+CTestTestfile.cmake
+CMakeConfigureLog.yaml
 *.so
-*.dll
+*.a
 *.dylib
+*.dll
 *.lib
 *.exe
-test_kernels
-bench_kernels
-*.rlib
+test_*
+bench_*
 
-# Benchmark artifacts
-bench/*.o
-bench/*.exe
-
-# IDE/editor
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-
-# OS
-.DS_Store
-Thumbs.db
-
-# opencode
-.opencode/
-
-# Python cache
+# Python
 __pycache__/
 *.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
 
 # Rust
 target/
 Cargo.lock
 
-# External deps (not tracked)
-faiss/
-simsimd/build_cmake/
+# Node
+node_modules/
+*.node
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test coverage
+*.gcda
+*.gcno
+*.gcov

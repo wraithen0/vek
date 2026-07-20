@@ -142,7 +142,6 @@ int32_t vek_dot_i8_sse2(const int8_t *a, const int8_t *b, size_t n)
     size_t i = 0;
 
     __m128i sum_vec = _mm_setzero_si128();
-    const __m128i zero = _mm_setzero_si128();
     const __m128i ones = _mm_set1_epi8(-1); /* for sign-extension */
 
     for (; i + simd_width <= n; i += simd_width) {

@@ -59,7 +59,7 @@ jobs:
           choco install cmake --installargs 'ADD_CMAKE_TO_PATH=System'
 
       - name: Configure CMake
-        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_RPATH_USE_LINK_PATH=ON -DCMAKE_BUILD_RPATH=./lib -DVEK_BUILD_AVX512=ON
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_RPATH_USE_LINK_PATH=ON -DCMAKE_BUILD_RPATH=./lib
 
       - name: Build
         run: cmake --build build --config Release --parallel

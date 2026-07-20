@@ -15,6 +15,8 @@ ifeq ($(UNAME_M),x86_64)
     CFLAGS_AVX2 = -msse2 -mavx -mavx2 -mfma
     ifeq ($(UNAME_S),Linux)
         CFLAGS_AVX512 = -msse2 -mavx -mavx2 -mfma -mavx512f -mavx512vl -mavx512bw -mavx512dq -mavx512vnni -mavx512vpopcntdq
+        # Tell dispatch.c + tests that the AVX-512 backend is compiled in.
+        CFLAGS += -DVEK_HAVE_AVX512=1
     endif
 endif
 
@@ -96,7 +98,7 @@ $(OBJ_X86_AVX2): $(SRC_X86_AVX2) include/vek.h
 
 ifneq ($(CFLAGS_AVX512),)
 $(OBJ_X86_AVX512): $(SRC_X86_AVX512) include/vek.h
-	$(CC) $(CFLAGS) $(CFLAGS_AVX512) -c $< -o $@
+	$(CC) $(CFLAGS) -DVEK_HAVE_AVX512=1 $(CFLAGS_AVX512) -c $< -o $@
 endif
 endif
 

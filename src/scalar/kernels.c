@@ -140,8 +140,11 @@ int32_t vek_dot_b1_scalar(const uint64_t *a, const uint64_t *b, size_t n)
 {
     int32_t sum = 0;
     size_t words = (n + 63) / 64;
+    uint64_t rem = n & 63;
+    uint64_t mask = (rem == 0) ? ~0ULL : ((1ULL << rem) - 1ULL);
     for (size_t i = 0; i < words; i++) {
         uint64_t and_bits = a[i] & b[i];
+        if (i == words - 1) and_bits &= mask; /* ignore padding bits past n */
         sum += __builtin_popcountll(and_bits);
     }
     return sum;
@@ -151,8 +154,12 @@ int32_t vek_hamming_b1_scalar(const uint64_t *a, const uint64_t *b, size_t n)
 {
     int32_t sum = 0;
     size_t words = (n + 63) / 64;
+    uint64_t rem = n & 63;
+    uint64_t mask = (rem == 0) ? ~0ULL : ((1ULL << rem) - 1ULL);
     for (size_t i = 0; i < words; i++) {
-        sum += __builtin_popcountll(a[i] ^ b[i]);
+        uint64_t xor_bits = a[i] ^ b[i];
+        if (i == words - 1) xor_bits &= mask; /* ignore padding bits past n */
+        sum += __builtin_popcountll(xor_bits);
     }
     return sum;
 }
@@ -163,11 +170,15 @@ float vek_cosine_b1_scalar(const uint64_t *a, const uint64_t *b, size_t n)
     int32_t norm_a = 0;
     int32_t norm_b = 0;
     size_t words = (n + 63) / 64;
+    uint64_t rem = n & 63;
+    uint64_t mask = (rem == 0) ? ~0ULL : ((1ULL << rem) - 1ULL);
     for (size_t i = 0; i < words; i++) {
-        uint64_t and_bits = a[i] & b[i];
+        uint64_t av = a[i], bv = b[i];
+        if (i == words - 1) { av &= mask; bv &= mask; } /* ignore padding bits past n */
+        uint64_t and_bits = av & bv;
         dot += __builtin_popcountll(and_bits);
-        norm_a += __builtin_popcountll(a[i]);
-        norm_b += __builtin_popcountll(b[i]);
+        norm_a += __builtin_popcountll(av);
+        norm_b += __builtin_popcountll(bv);
     }
     if (norm_a == 0 || norm_b == 0) return 0.0f;
     return (float)dot / (sqrtf((float)norm_a) * sqrtf((float)norm_b));
