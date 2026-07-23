@@ -157,10 +157,10 @@ int32_t vek_dot_i8_avx512(const int8_t *a, const int8_t *b, size_t n)
     return sum_scalar;
 }
 
-/* AVX-512 VNNI uint8 dot product using widen-then-multiply for correctness */
+/* AVX-512 uint8 dot product using mullo_epi32 on widened data */
 uint32_t vek_dot_u8_avx512(const uint8_t *a, const uint8_t *b, size_t n)
 {
-    const size_t simd_width = 64; /* 512-bit = 64 uint8 */
+    const size_t simd_width = 64;
     size_t i = 0;
 
     __m512i sum_vec = _mm512_setzero_si512();
@@ -169,7 +169,6 @@ uint32_t vek_dot_u8_avx512(const uint8_t *a, const uint8_t *b, size_t n)
         __m512i a_vec = _mm512_loadu_si512((const __m512i*)(a + i));
         __m512i b_vec = _mm512_loadu_si512((const __m512i*)(b + i));
 
-        /* Zero-extend uint8 to uint16, then multiply uint16×uint16 → uint32, accumulate */
         __m128i a_lo128 = _mm512_castsi512_si128(a_vec);
         __m128i a_hi128 = _mm512_extracti32x4_epi32(a_vec, 1);
         __m128i a_lo2_128 = _mm512_extracti32x4_epi32(a_vec, 2);
@@ -200,20 +199,14 @@ uint32_t vek_dot_u8_avx512(const uint8_t *a, const uint8_t *b, size_t n)
         __m512i b_lo2 = _mm512_cvtepu16_epi32(b_lo2_256);
         __m512i b_hi2 = _mm512_cvtepu16_epi32(b_hi2_256);
 
-        __m512i sum_lo = _mm512_madd_epi16(a_lo, b_lo);
-        __m512i sum_hi = _mm512_madd_epi16(a_hi, b_hi);
-        __m512i sum_lo2 = _mm512_madd_epi16(a_lo2, b_lo2);
-        __m512i sum_hi2 = _mm512_madd_epi16(a_hi2, b_hi2);
-
-        sum_vec = _mm512_add_epi32(sum_vec, sum_lo);
-        sum_vec = _mm512_add_epi32(sum_vec, sum_hi);
-        sum_vec = _mm512_add_epi32(sum_vec, sum_lo2);
-        sum_vec = _mm512_add_epi32(sum_vec, sum_hi2);
+        sum_vec = _mm512_add_epi32(sum_vec, _mm512_mullo_epi32(a_lo, b_lo));
+        sum_vec = _mm512_add_epi32(sum_vec, _mm512_mullo_epi32(a_hi, b_hi));
+        sum_vec = _mm512_add_epi32(sum_vec, _mm512_mullo_epi32(a_lo2, b_lo2));
+        sum_vec = _mm512_add_epi32(sum_vec, _mm512_mullo_epi32(a_hi2, b_hi2));
     }
 
     uint32_t sum_scalar = (uint32_t)_mm512_reduce_add_epi32(sum_vec);
 
-    /* Tail */
     for (; i < n; i++) {
         sum_scalar += (uint32_t)a[i] * (uint32_t)b[i];
     }
@@ -511,30 +504,30 @@ float vek_cosine_u8_avx512(const uint8_t *a, const uint8_t *b, size_t n)
         __m512i b_lo2 = _mm512_cvtepu16_epi32(b_lo2_256);
         __m512i b_hi2 = _mm512_cvtepu16_epi32(b_hi2_256);
 
-        __m512i dot_lo = _mm512_madd_epi16(a_lo, b_lo);
-        __m512i dot_hi = _mm512_madd_epi16(a_hi, b_hi);
-        __m512i dot_lo2 = _mm512_madd_epi16(a_lo2, b_lo2);
-        __m512i dot_hi2 = _mm512_madd_epi16(a_hi2, b_hi2);
+        __m512i dot_lo = _mm512_mullo_epi32(a_lo, b_lo);
+        __m512i dot_hi = _mm512_mullo_epi32(a_hi, b_hi);
+        __m512i dot_lo2 = _mm512_mullo_epi32(a_lo2, b_lo2);
+        __m512i dot_hi2 = _mm512_mullo_epi32(a_hi2, b_hi2);
         dot_vec = _mm512_add_epi32(dot_vec, dot_lo);
         dot_vec = _mm512_add_epi32(dot_vec, dot_hi);
         dot_vec = _mm512_add_epi32(dot_vec, dot_lo2);
         dot_vec = _mm512_add_epi32(dot_vec, dot_hi2);
 
         /* norm a */
-        __m512i sq_a_lo = _mm512_madd_epi16(a_lo, a_lo);
-        __m512i sq_a_hi = _mm512_madd_epi16(a_hi, a_hi);
-        __m512i sq_a_lo2 = _mm512_madd_epi16(a_lo2, a_lo2);
-        __m512i sq_a_hi2 = _mm512_madd_epi16(a_hi2, a_hi2);
+        __m512i sq_a_lo = _mm512_mullo_epi32(a_lo, a_lo);
+        __m512i sq_a_hi = _mm512_mullo_epi32(a_hi, a_hi);
+        __m512i sq_a_lo2 = _mm512_mullo_epi32(a_lo2, a_lo2);
+        __m512i sq_a_hi2 = _mm512_mullo_epi32(a_hi2, a_hi2);
         norm_a_vec = _mm512_add_epi32(norm_a_vec, sq_a_lo);
         norm_a_vec = _mm512_add_epi32(norm_a_vec, sq_a_hi);
         norm_a_vec = _mm512_add_epi32(norm_a_vec, sq_a_lo2);
         norm_a_vec = _mm512_add_epi32(norm_a_vec, sq_a_hi2);
 
         /* norm b */
-        __m512i sq_b_lo = _mm512_madd_epi16(b_lo, b_lo);
-        __m512i sq_b_hi = _mm512_madd_epi16(b_hi, b_hi);
-        __m512i sq_b_lo2 = _mm512_madd_epi16(b_lo2, b_lo2);
-        __m512i sq_b_hi2 = _mm512_madd_epi16(b_hi2, b_hi2);
+        __m512i sq_b_lo = _mm512_mullo_epi32(b_lo, b_lo);
+        __m512i sq_b_hi = _mm512_mullo_epi32(b_hi, b_hi);
+        __m512i sq_b_lo2 = _mm512_mullo_epi32(b_lo2, b_lo2);
+        __m512i sq_b_hi2 = _mm512_mullo_epi32(b_hi2, b_hi2);
         norm_b_vec = _mm512_add_epi32(norm_b_vec, sq_b_lo);
         norm_b_vec = _mm512_add_epi32(norm_b_vec, sq_b_hi);
         norm_b_vec = _mm512_add_epi32(norm_b_vec, sq_b_lo2);

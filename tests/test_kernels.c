@@ -244,6 +244,90 @@ static void test_cosine_properties(void)
     test_assert_eq("cos scale invar", vek_cosine_f32(a, b, 4), vek_cosine_f32(ca, b, 4));
 }
 
+static void run_i8_tests(void)
+{
+    printf("\n=== int8 tests (dispatch) ===\n");
+
+    int8_t a1[] = {1, 2, 3, 4, 5};
+    int8_t b1[] = {1, 2, 3, 4, 5};
+    int32_t dot = vek_dot_i8(a1, b1, 5);
+    int32_t l2 = vek_l2sq_i8(a1, b1, 5);
+    float cos = vek_cosine_i8(a1, b1, 5);
+
+    if (dot == 55) { printf("  PASS: dot i8 identical (got %d)\n", dot); tests_passed++; }
+    else { printf("  FAIL: dot i8 identical (got %d, exp 55)\n", dot); tests_failed++; }
+
+    if (l2 == 0) { printf("  PASS: l2sq i8 identical (got %d)\n", l2); tests_passed++; }
+    else { printf("  FAIL: l2sq i8 identical (got %d, exp 0)\n", l2); tests_failed++; }
+
+    if (float_eq_rel(cos, 1.0f, REL_EPS, ABS_EPS)) { printf("  PASS: cosine i8 identical (got %f)\n", cos); tests_passed++; }
+    else { printf("  FAIL: cosine i8 identical (got %f, exp 1.0)\n", cos); tests_failed++; }
+
+    int8_t a2[] = {1, 0};
+    int8_t b2[] = {0, 1};
+    if (vek_dot_i8(a2, b2, 2) == 0) { printf("  PASS: dot i8 orthogonal\n"); tests_passed++; }
+    else { printf("  FAIL: dot i8 orthogonal\n"); tests_failed++; }
+
+    /* Negative values */
+    int8_t a3[] = {-1, -2, -3};
+    int8_t b3[] = {1, 2, 3};
+    if (vek_dot_i8(a3, b3, 3) == -14) { printf("  PASS: dot i8 opposite\n"); tests_passed++; }
+    else { printf("  FAIL: dot i8 opposite (got %d, exp -14)\n", vek_dot_i8(a3, b3, 3)); tests_failed++; }
+}
+
+static void run_u8_tests(void)
+{
+    printf("\n=== uint8 tests (dispatch) ===\n");
+
+    uint8_t a1[] = {1, 2, 3, 4, 5};
+    uint8_t b1[] = {1, 2, 3, 4, 5};
+    uint32_t dot = vek_dot_u8(a1, b1, 5);
+    uint32_t l2 = vek_l2sq_u8(a1, b1, 5);
+    float cos = vek_cosine_u8(a1, b1, 5);
+
+    if (dot == 55) { printf("  PASS: dot u8 identical (got %u)\n", dot); tests_passed++; }
+    else { printf("  FAIL: dot u8 identical (got %u, exp 55)\n", dot); tests_failed++; }
+
+    if (l2 == 0) { printf("  PASS: l2sq u8 identical (got %u)\n", l2); tests_passed++; }
+    else { printf("  FAIL: l2sq u8 identical (got %u, exp 0)\n", l2); tests_failed++; }
+
+    if (float_eq_rel(cos, 1.0f, REL_EPS, ABS_EPS)) { printf("  PASS: cosine u8 identical (got %f)\n", cos); tests_passed++; }
+    else { printf("  FAIL: cosine u8 identical (got %f, exp 1.0)\n", cos); tests_failed++; }
+
+    uint8_t a2[] = {1, 0};
+    uint8_t b2[] = {0, 1};
+    if (vek_dot_u8(a2, b2, 2) == 0) { printf("  PASS: dot u8 orthogonal\n"); tests_passed++; }
+    else { printf("  FAIL: dot u8 orthogonal\n"); tests_failed++; }
+}
+
+static void run_b1_tests(void)
+{
+    printf("\n=== Binary (1-bit) tests (dispatch) ===\n");
+
+    uint64_t a1[] = {0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL};
+    uint64_t b1[] = {0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL};
+    int32_t dot = vek_dot_b1(a1, b1, 128);
+    int32_t ham = vek_hamming_b1(a1, b1, 128);
+    float cos = vek_cosine_b1(a1, b1, 128);
+
+    if (dot == 128) { printf("  PASS: dot b1 identical (got %d)\n", dot); tests_passed++; }
+    else { printf("  FAIL: dot b1 identical (got %d, exp 128)\n", dot); tests_failed++; }
+
+    if (ham == 0) { printf("  PASS: ham b1 identical (got %d)\n", ham); tests_passed++; }
+    else { printf("  FAIL: ham b1 identical (got %d, exp 0)\n", ham); tests_failed++; }
+
+    if (float_eq_rel(cos, 1.0f, REL_EPS, ABS_EPS)) { printf("  PASS: cosine b1 identical (got %f)\n", cos); tests_passed++; }
+    else { printf("  FAIL: cosine b1 identical (got %f, exp 1.0)\n", cos); tests_failed++; }
+
+    uint64_t a2[] = {0xAAAAAAAAAAAAAAAAULL};
+    uint64_t b2[] = {0x5555555555555555ULL};
+    if (vek_dot_b1(a2, b2, 64) == 0) { printf("  PASS: dot b1 orthogonal\n"); tests_passed++; }
+    else { printf("  FAIL: dot b1 orthogonal\n"); tests_failed++; }
+
+    if (vek_hamming_b1(a2, b2, 64) == 64) { printf("  PASS: ham b1 orthogonal\n"); tests_passed++; }
+    else { printf("  FAIL: ham b1 orthogonal\n"); tests_failed++; }
+}
+
 static void print_backend(void)
 {
     printf("\n=== Active backend: %s ===\n", vek_backend_name());
@@ -266,6 +350,9 @@ int main(void)
     test_deterministic();
     test_symmetry();
     test_cosine_properties();
+    run_i8_tests();
+    run_u8_tests();
+    run_b1_tests();
 
     printf("\n=== SUMMARY ===\n");
     printf("Total: %d passed, %d failed\n", tests_passed, tests_failed);

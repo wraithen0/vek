@@ -457,6 +457,159 @@ static void run_basic_tests_b1(const char *backend,
     test_assert_eq_f32("cosine b1 orthogonal", cos_fn(a3, b3, 64), 0.0f);
 }
 
+/* Large-vector i8 tests to exercise SIMD paths (n >= 16 for SSE2, 32 for AVX2, 64 for AVX-512) */
+static void run_simd_tests_i8(const char *backend,
+                              int32_t (*dot_fn)(const int8_t*, const int8_t*, size_t),
+                              int32_t (*l2sq_fn)(const int8_t*, const int8_t*, size_t),
+                              float (*cos_fn)(const int8_t*, const int8_t*, size_t))
+{
+    printf("\n=== %s: SIMD i8 (large vectors) ===\n", backend);
+    srand(0xBEEF1234);
+
+    /* Test at key SIMD widths and beyond */
+    size_t sizes[] = {15, 16, 31, 32, 63, 64, 65, 128, 256};
+    for (size_t si = 0; si < sizeof(sizes)/sizeof(sizes[0]); si++) {
+        size_t n = sizes[si];
+        int8_t *a = malloc(n);
+        int8_t *b = malloc(n);
+
+        for (size_t i = 0; i < n; i++) {
+            a[i] = (int8_t)(rand() % 256 - 128);
+            b[i] = (int8_t)(rand() % 256 - 128);
+        }
+
+        /* Verify cosine is in [-1, 1] */
+        float cos = cos_fn(a, b, n);
+        if (cos < -1.00001f || cos > 1.00001f) {
+            printf("  FAIL: i8 cosine out of range n=%zu: %f\n", n, cos);
+            tests_failed++;
+        } else {
+            tests_passed++;
+        }
+
+        /* Verify l2sq is non-negative */
+        int32_t l2 = l2sq_fn(a, b, n);
+        if (l2 < 0) {
+            printf("  FAIL: i8 l2sq negative n=%zu: %d\n", n, l2);
+            tests_failed++;
+        } else {
+            tests_passed++;
+        }
+
+        /* Exercise dot to ensure no crash */
+        dot_fn(a, b, n);
+
+        free(a);
+        free(b);
+    }
+
+    /* Identical vectors at SIMD widths */
+    for (size_t si = 0; si < sizeof(sizes)/sizeof(sizes[0]); si++) {
+        size_t n = sizes[si];
+        int8_t *a = malloc(n);
+        int8_t *b = malloc(n);
+
+        for (size_t i = 0; i < n; i++) {
+            a[i] = (int8_t)(i % 127 - 63);
+            b[i] = a[i];
+        }
+
+        dot_fn(a, b, n);
+        int32_t l2 = l2sq_fn(a, b, n);
+        float cos = cos_fn(a, b, n);
+
+        if (l2 != 0) {
+            printf("  FAIL: i8 l2sq identical n=%zu: %d\n", n, l2);
+            tests_failed++;
+        } else {
+            tests_passed++;
+        }
+
+        if (!float_eq_rel(cos, 1.0f, REL_EPS, ABS_EPS)) {
+            printf("  FAIL: i8 cosine identical n=%zu: %f\n", n, cos);
+            tests_failed++;
+        } else {
+            tests_passed++;
+        }
+
+        free(a);
+        free(b);
+    }
+
+    printf("%s SIMD i8 tests done\n", backend);
+}
+
+/* Large-vector u8 tests to exercise SIMD paths */
+static void run_simd_tests_u8(const char *backend,
+                              uint32_t (*dot_fn)(const uint8_t*, const uint8_t*, size_t),
+                              uint32_t (*l2sq_fn)(const uint8_t*, const uint8_t*, size_t),
+                              float (*cos_fn)(const uint8_t*, const uint8_t*, size_t))
+{
+    printf("\n=== %s: SIMD u8 (large vectors) ===\n", backend);
+    srand(0xCAFEBABE);
+
+    size_t sizes[] = {15, 16, 31, 32, 63, 64, 65, 128, 256};
+    for (size_t si = 0; si < sizeof(sizes)/sizeof(sizes[0]); si++) {
+        size_t n = sizes[si];
+        uint8_t *a = malloc(n);
+        uint8_t *b = malloc(n);
+
+        for (size_t i = 0; i < n; i++) {
+            a[i] = (uint8_t)(rand() & 0xFF);
+            b[i] = (uint8_t)(rand() & 0xFF);
+        }
+
+        float cos = cos_fn(a, b, n);
+        if (cos < -1.00001f || cos > 1.00001f) {
+            printf("  FAIL: u8 cosine out of range n=%zu: %f\n", n, cos);
+            tests_failed++;
+        } else {
+            tests_passed++;
+        }
+
+        /* Exercise dot and l2sq to ensure no crash */
+        dot_fn(a, b, n);
+        l2sq_fn(a, b, n);
+
+        free(a);
+        free(b);
+    }
+
+    /* Identical vectors at SIMD widths */
+    for (size_t si = 0; si < sizeof(sizes)/sizeof(sizes[0]); si++) {
+        size_t n = sizes[si];
+        uint8_t *a = malloc(n);
+        uint8_t *b = malloc(n);
+
+        for (size_t i = 0; i < n; i++) {
+            a[i] = (uint8_t)(i & 0xFF);
+            b[i] = a[i];
+        }
+
+        uint32_t l2 = l2sq_fn(a, b, n);
+        float cos = cos_fn(a, b, n);
+
+        if (l2 != 0) {
+            printf("  FAIL: u8 l2sq identical n=%zu: %u\n", n, l2);
+            tests_failed++;
+        } else {
+            tests_passed++;
+        }
+
+        if (!float_eq_rel(cos, 1.0f, REL_EPS, ABS_EPS)) {
+            printf("  FAIL: u8 cosine identical n=%zu: %f\n", n, cos);
+            tests_failed++;
+        } else {
+            tests_passed++;
+        }
+
+        free(a);
+        free(b);
+    }
+
+    printf("%s SIMD u8 tests done\n", backend);
+}
+
 static void test_deterministic(const char *backend,
                                float (*dot_fn)(const float*, const float*, size_t))
 {
@@ -528,6 +681,8 @@ static void test_cosine_properties_f32(const char *backend,
         test_cosine_properties_f32(#name, cos_f32); \
         run_basic_tests_i8(#name, dot_i8, l2sq_i8, cos_i8); \
         run_basic_tests_u8(#name, dot_u8, l2sq_u8, cos_u8); \
+        run_simd_tests_i8(#name, dot_i8, l2sq_i8, cos_i8); \
+        run_simd_tests_u8(#name, dot_u8, l2sq_u8, cos_u8); \
         run_basic_tests_b1(#name, dot_b1, ham_b1, cos_b1); \
     } while (0)
 
