@@ -7,6 +7,7 @@
 #include <stddef.h>
 #include <math.h>
 #include "vek.h"
+#include "../internal.h"
 
 /* NEON dot product: sum(a[i] * b[i]) */
 float vek_dot_f32_neon(const float *a, const float *b, size_t n)
@@ -507,7 +508,7 @@ int32_t vek_dot_b1_neon(const uint64_t *a, const uint64_t *b, size_t n)
     for (; i < words; i++) {
         uint64_t and_bits = a[i] & b[i];
         if (i == words - 1) and_bits &= mask; /* ignore padding bits past n */
-        sum_scalar += __builtin_popcountll(and_bits);
+        sum_scalar += vek_popcount64(and_bits);
     }
 
     return sum_scalar;
@@ -546,7 +547,7 @@ int32_t vek_hamming_b1_neon(const uint64_t *a, const uint64_t *b, size_t n)
     for (; i < words; i++) {
         uint64_t xor_bits = a[i] ^ b[i];
         if (i == words - 1) xor_bits &= mask; /* ignore padding bits past n */
-        sum_scalar += __builtin_popcountll(xor_bits);
+        sum_scalar += vek_popcount64(xor_bits);
     }
 
     return sum_scalar;
@@ -612,9 +613,9 @@ float vek_cosine_b1_neon(const uint64_t *a, const uint64_t *b, size_t n)
         uint64_t av = a[i], bv = b[i];
         if (i == words - 1) { av &= mask; bv &= mask; } /* ignore padding bits past n */
         uint64_t and_bits = av & bv;
-        dot_scalar += __builtin_popcountll(and_bits);
-        norm_a_scalar += __builtin_popcountll(av);
-        norm_b_scalar += __builtin_popcountll(bv);
+        dot_scalar += vek_popcount64(and_bits);
+        norm_a_scalar += vek_popcount64(av);
+        norm_b_scalar += vek_popcount64(bv);
     }
 
     float norm_a_sqrt = sqrtf((float)norm_a_scalar);

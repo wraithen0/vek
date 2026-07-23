@@ -3,7 +3,7 @@
 
 CC = gcc
 CFLAGS = -std=c11 -O3 -Wall -Wextra -pedantic -Iinclude -fPIC
-LDFLAGS = -lm
+LDFLAGS = -lm -lpthread
 
 # Architecture-specific flags
 UNAME_M := $(shell uname -m)

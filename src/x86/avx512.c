@@ -9,6 +9,7 @@
 #include <stddef.h>
 #include <math.h>
 #include "vek.h"
+#include "../internal.h"
 
 /* AVX-512 dot product: sum(a[i] * b[i]) */
 float vek_dot_f32_avx512(const float *a, const float *b, size_t n)
@@ -605,7 +606,7 @@ int32_t vek_dot_b1_avx512(const uint64_t *a, const uint64_t *b, size_t n)
     for (; i < words; i++) {
         uint64_t xnor = ~(a[i] ^ b[i]);
         if (i == words - 1) xnor &= mask; /* ignore padding bits past n */
-        sum_scalar += __builtin_popcountll(xnor);
+        sum_scalar += vek_popcount64(xnor);
     }
 
     return sum_scalar;
@@ -651,7 +652,7 @@ int32_t vek_hamming_b1_avx512(const uint64_t *a, const uint64_t *b, size_t n)
     for (; i < words; i++) {
         uint64_t xor_bits = a[i] ^ b[i];
         if (i == words - 1) xor_bits &= mask; /* ignore padding bits past n */
-        sum_scalar += __builtin_popcountll(xor_bits);
+        sum_scalar += vek_popcount64(xor_bits);
     }
 
     return sum_scalar;
@@ -714,9 +715,9 @@ float vek_cosine_b1_avx512(const uint64_t *a, const uint64_t *b, size_t n)
     for (; i < words; i++) {
         uint64_t av = a[i], bv = b[i];
         if (i == words - 1) { av &= mask; bv &= mask; }
-        dot_scalar += __builtin_popcountll(av & bv);
-        norm_a_scalar += __builtin_popcountll(av);
-        norm_b_scalar += __builtin_popcountll(bv);
+        dot_scalar += vek_popcount64(av & bv);
+        norm_a_scalar += vek_popcount64(av);
+        norm_b_scalar += vek_popcount64(bv);
     }
 
     if (norm_a_scalar == 0 || norm_b_scalar == 0) return 0.0f;
