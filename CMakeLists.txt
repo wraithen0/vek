@@ -1,9 +1,9 @@
 cmake_minimum_required(VERSION 3.16)
-project(vek VERSION 1.0.0 LANGUAGES C)
+project(vek VERSION 0.8.0 LANGUAGES C)
 
 # Project metadata
-set(VEK_VERSION_MAJOR 1)
-set(VEK_VERSION_MINOR 0)
+set(VEK_VERSION_MAJOR 0)
+set(VEK_VERSION_MINOR 8)
 set(VEK_VERSION_PATCH 0)
 
 # C standard
