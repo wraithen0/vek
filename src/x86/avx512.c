@@ -410,10 +410,10 @@ float vek_cosine_i8_avx512(const int8_t *a, const int8_t *b, size_t n)
         __m512i a_lo16_2 = _mm512_cvtepi16_epi32(a_lo2_256);
         __m512i a_hi16_2 = _mm512_cvtepi16_epi32(a_hi2_256);
 
-        __m512i sq_a_lo = _mm512_madd_epi16(a_lo16, a_lo16);
-        __m512i sq_a_hi = _mm512_madd_epi16(a_hi16, a_hi16);
-        __m512i sq_a_lo2 = _mm512_madd_epi16(a_lo16_2, a_lo16_2);
-        __m512i sq_a_hi2 = _mm512_madd_epi16(a_hi16_2, a_hi16_2);
+        __m512i sq_a_lo = _mm512_mullo_epi32(a_lo16, a_lo16);
+        __m512i sq_a_hi = _mm512_mullo_epi32(a_hi16, a_hi16);
+        __m512i sq_a_lo2 = _mm512_mullo_epi32(a_lo16_2, a_lo16_2);
+        __m512i sq_a_hi2 = _mm512_mullo_epi32(a_hi16_2, a_hi16_2);
         norm_a_vec = _mm512_add_epi32(norm_a_vec, sq_a_lo);
         norm_a_vec = _mm512_add_epi32(norm_a_vec, sq_a_hi);
         norm_a_vec = _mm512_add_epi32(norm_a_vec, sq_a_lo2);
@@ -430,10 +430,10 @@ float vek_cosine_i8_avx512(const int8_t *a, const int8_t *b, size_t n)
         __m512i b_lo16_2 = _mm512_cvtepi16_epi32(b_lo2_256);
         __m512i b_hi16_2 = _mm512_cvtepi16_epi32(b_hi2_256);
 
-        __m512i sq_b_lo = _mm512_madd_epi16(b_lo16, b_lo16);
-        __m512i sq_b_hi = _mm512_madd_epi16(b_hi16, b_hi16);
-        __m512i sq_b_lo2 = _mm512_madd_epi16(b_lo16_2, b_lo16_2);
-        __m512i sq_b_hi2 = _mm512_madd_epi16(b_hi16_2, b_hi16_2);
+        __m512i sq_b_lo = _mm512_mullo_epi32(b_lo16, b_lo16);
+        __m512i sq_b_hi = _mm512_mullo_epi32(b_hi16, b_hi16);
+        __m512i sq_b_lo2 = _mm512_mullo_epi32(b_lo16_2, b_lo16_2);
+        __m512i sq_b_hi2 = _mm512_mullo_epi32(b_hi16_2, b_hi16_2);
         norm_b_vec = _mm512_add_epi32(norm_b_vec, sq_b_lo);
         norm_b_vec = _mm512_add_epi32(norm_b_vec, sq_b_hi);
         norm_b_vec = _mm512_add_epi32(norm_b_vec, sq_b_lo2);
@@ -442,7 +442,7 @@ float vek_cosine_i8_avx512(const int8_t *a, const int8_t *b, size_t n)
 
     int32_t dot_scalar = _mm512_reduce_add_epi32(dot_vec);
     int32_t b_sum_scalar = _mm512_reduce_add_epi32(b_sum_vec);
-    dot_scalar -= (-128) * b_sum_scalar; /* VNNI bias correction: a was biased by -128 */
+    dot_scalar += (-128) * b_sum_scalar; /* VNNI bias correction: a was biased by -128, so subtract 128*sum(b) */
 
     int32_t norm_a_scalar = _mm512_reduce_add_epi32(norm_a_vec);
     int32_t norm_b_scalar = _mm512_reduce_add_epi32(norm_b_vec);
@@ -474,7 +474,6 @@ float vek_cosine_u8_avx512(const uint8_t *a, const uint8_t *b, size_t n)
     __m512i dot_vec = _mm512_setzero_si512();
     __m512i norm_a_vec = _mm512_setzero_si512();
     __m512i norm_b_vec = _mm512_setzero_si512();
-    __m512i a_sum_vec = _mm512_setzero_si512();
 
     for (; i + simd_width <= n; i += simd_width) {
         __m512i a_vec = _mm512_loadu_si512((const __m512i*)(a + i));
@@ -530,16 +529,6 @@ float vek_cosine_u8_avx512(const uint8_t *a, const uint8_t *b, size_t n)
         norm_a_vec = _mm512_add_epi32(norm_a_vec, sq_a_lo2);
         norm_a_vec = _mm512_add_epi32(norm_a_vec, sq_a_hi2);
 
-        /* Accumulate sum(a) for VNNI correction term - use 128-bit extracts */
-        __m512i a_lo32 = _mm512_cvtepu8_epi32(a_lo128);
-        __m512i a_hi32 = _mm512_cvtepu8_epi32(a_hi128);
-        __m512i a_lo32_2 = _mm512_cvtepu8_epi32(a_lo2_128);
-        __m512i a_hi32_2 = _mm512_cvtepu8_epi32(a_hi2_128);
-        a_sum_vec = _mm512_add_epi32(a_sum_vec, a_lo32);
-        a_sum_vec = _mm512_add_epi32(a_sum_vec, a_hi32);
-        a_sum_vec = _mm512_add_epi32(a_sum_vec, a_lo32_2);
-        a_sum_vec = _mm512_add_epi32(a_sum_vec, a_hi32_2);
-
         /* norm b */
         __m512i sq_b_lo = _mm512_madd_epi16(b_lo, b_lo);
         __m512i sq_b_hi = _mm512_madd_epi16(b_hi, b_hi);
@@ -552,9 +541,6 @@ float vek_cosine_u8_avx512(const uint8_t *a, const uint8_t *b, size_t n)
     }
 
     int32_t dot_scalar = _mm512_reduce_add_epi32(dot_vec);
-    int32_t a_sum_scalar = _mm512_reduce_add_epi32(a_sum_vec);
-    dot_scalar -= 128 * a_sum_scalar; /* VNNI correction: sum(a*b) = sum((a+128)*b) - 128*sum(a) */
-
     int32_t norm_a_scalar = _mm512_reduce_add_epi32(norm_a_vec);
     int32_t norm_b_scalar = _mm512_reduce_add_epi32(norm_b_vec);
 
@@ -635,7 +621,9 @@ int32_t vek_hamming_b1_avx512(const uint64_t *a, const uint64_t *b, size_t n)
 
     /* SIMD over complete 8-word blocks only; final partial block handled by
      * the scalar tail below (which masks padding bits past n). */
-    size_t simd_words = (words / simd_width) * simd_width;
+    uint64_t rem = n & 63;
+    size_t simd_words = (rem != 0) ? ((words - 1) / simd_width) * simd_width
+                                    : (words / simd_width) * simd_width;
     for (; i + simd_width <= simd_words; i += simd_width) {
         __m512i a_vec = _mm512_loadu_si512((const __m512i*)(a + i));
         __m512i b_vec = _mm512_loadu_si512((const __m512i*)(b + i));
@@ -659,7 +647,6 @@ int32_t vek_hamming_b1_avx512(const uint64_t *a, const uint64_t *b, size_t n)
     int32_t sum_scalar = _mm512_reduce_add_epi32(sum_vec);
 
     /* Scalar tail: words [i, words). Mask padding bits in the final word. */
-    uint64_t rem = n & 63;
     uint64_t mask = (rem == 0) ? ~0ULL : ((1ULL << rem) - 1ULL);
     for (; i < words; i++) {
         uint64_t xor_bits = a[i] ^ b[i];

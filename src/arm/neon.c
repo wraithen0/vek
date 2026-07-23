@@ -482,7 +482,7 @@ int32_t vek_dot_b1_neon(const uint64_t *a, const uint64_t *b, size_t n)
 
     int32x4_t sum_vec = vdupq_n_s32(0);
 
-    for (; i + simd_width <= words; i += simd_width) {
+    for (; i + simd_width < words; i += simd_width) {
         uint64x2_t a_vec = vld1q_u64(a + i);
         uint64x2_t b_vec = vld1q_u64(b + i);
 
@@ -502,10 +502,9 @@ int32_t vek_dot_b1_neon(const uint64_t *a, const uint64_t *b, size_t n)
     int32_t sum_scalar = vget_lane_s32(vpadd_s32(sum, sum), 0);
 
     /* Tail */
-    size_t words = (n + 63) / 64;
     uint64_t rem = n & 63;
     uint64_t mask = (rem == 0) ? ~0ULL : ((1ULL << rem) - 1ULL);
-    for (size_t i = 0; i < words; i++) {
+    for (; i < words; i++) {
         uint64_t and_bits = a[i] & b[i];
         if (i == words - 1) and_bits &= mask; /* ignore padding bits past n */
         sum_scalar += __builtin_popcountll(and_bits);
@@ -522,7 +521,7 @@ int32_t vek_hamming_b1_neon(const uint64_t *a, const uint64_t *b, size_t n)
 
     int32x4_t sum_vec = vdupq_n_s32(0);
 
-    for (; i + simd_width <= words; i += simd_width) {
+    for (; i + simd_width < words; i += simd_width) {
         uint64x2_t a_vec = vld1q_u64(a + i);
         uint64x2_t b_vec = vld1q_u64(b + i);
 
@@ -542,10 +541,9 @@ int32_t vek_hamming_b1_neon(const uint64_t *a, const uint64_t *b, size_t n)
     int32_t sum_scalar = vget_lane_s32(vpadd_s32(sum, sum), 0);
 
     /* Tail - XOR + popcount for hamming distance */
-    size_t words = (n + 63) / 64;
     uint64_t rem = n & 63;
     uint64_t mask = (rem == 0) ? ~0ULL : ((1ULL << rem) - 1ULL);
-    for (size_t i = 0; i < words; i++) {
+    for (; i < words; i++) {
         uint64_t xor_bits = a[i] ^ b[i];
         if (i == words - 1) xor_bits &= mask; /* ignore padding bits past n */
         sum_scalar += __builtin_popcountll(xor_bits);
@@ -564,7 +562,7 @@ float vek_cosine_b1_neon(const uint64_t *a, const uint64_t *b, size_t n)
     int32x4_t norm_a_vec = vdupq_n_s32(0);
     int32x4_t norm_b_vec = vdupq_n_s32(0);
 
-    for (; i + simd_width <= words; i += simd_width) {
+    for (; i + simd_width < words; i += simd_width) {
         uint64x2_t a_vec = vld1q_u64(a + i);
         uint64x2_t b_vec = vld1q_u64(b + i);
 
@@ -608,10 +606,9 @@ float vek_cosine_b1_neon(const uint64_t *a, const uint64_t *b, size_t n)
     int32_t norm_b_scalar = vget_lane_s32(vpadd_s32(nb, nb), 0);
 
     /* Tail - AND + popcount for dot, popcount for norms */
-    size_t words = (n + 63) / 64;
     uint64_t rem = n & 63;
     uint64_t mask = (rem == 0) ? ~0ULL : ((1ULL << rem) - 1ULL);
-    for (size_t i = 0; i < words; i++) {
+    for (; i < words; i++) {
         uint64_t av = a[i], bv = b[i];
         if (i == words - 1) { av &= mask; bv &= mask; } /* ignore padding bits past n */
         uint64_t and_bits = av & bv;

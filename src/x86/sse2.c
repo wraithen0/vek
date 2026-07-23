@@ -142,17 +142,16 @@ int32_t vek_dot_i8_sse2(const int8_t *a, const int8_t *b, size_t n)
     size_t i = 0;
 
     __m128i sum_vec = _mm_setzero_si128();
-    const __m128i ones = _mm_set1_epi8(-1); /* for sign-extension */
 
     for (; i + simd_width <= n; i += simd_width) {
         __m128i a_vec = _mm_loadu_si128((const __m128i*)(a + i));
         __m128i b_vec = _mm_loadu_si128((const __m128i*)(b + i));
 
-        /* SSE2: sign-extend int8 to int16 */
-        __m128i a_lo = _mm_unpacklo_epi8(a_vec, ones);  /* 8x 16-bit (sign-extended) */
-        __m128i a_hi = _mm_unpackhi_epi8(a_vec, ones);
-        __m128i b_lo = _mm_unpacklo_epi8(b_vec, ones);
-        __m128i b_hi = _mm_unpackhi_epi8(b_vec, ones);
+        /* SSE2: sign-extend int8 to int16 via unpack+arith shift */
+        __m128i a_lo = _mm_srai_epi16(_mm_unpacklo_epi8(a_vec, a_vec), 8);
+        __m128i a_hi = _mm_srai_epi16(_mm_unpackhi_epi8(a_vec, a_vec), 8);
+        __m128i b_lo = _mm_srai_epi16(_mm_unpacklo_epi8(b_vec, b_vec), 8);
+        __m128i b_hi = _mm_srai_epi16(_mm_unpackhi_epi8(b_vec, b_vec), 8);
 
         /* PMADDWD: multiply 16-bit pairs, add adjacent pairs -> 32-bit */
         __m128i sum_lo = _mm_madd_epi16(a_lo, b_lo);
@@ -222,17 +221,16 @@ int32_t vek_l2sq_i8_sse2(const int8_t *a, const int8_t *b, size_t n)
     size_t i = 0;
 
     __m128i sum_vec = _mm_setzero_si128();
-    const __m128i zero = _mm_setzero_si128();
 
     for (; i + simd_width <= n; i += simd_width) {
         __m128i a_vec = _mm_loadu_si128((const __m128i*)(a + i));
         __m128i b_vec = _mm_loadu_si128((const __m128i*)(b + i));
 
-        /* Unpack to 16-bit for subtraction */
-        __m128i a_lo = _mm_unpacklo_epi8(a_vec, zero);
-        __m128i a_hi = _mm_unpackhi_epi8(a_vec, zero);
-        __m128i b_lo = _mm_unpacklo_epi8(b_vec, zero);
-        __m128i b_hi = _mm_unpackhi_epi8(b_vec, zero);
+        /* Sign-extend int8 to int16 via unpack+arith shift */
+        __m128i a_lo = _mm_srai_epi16(_mm_unpacklo_epi8(a_vec, a_vec), 8);
+        __m128i a_hi = _mm_srai_epi16(_mm_unpackhi_epi8(a_vec, a_vec), 8);
+        __m128i b_lo = _mm_srai_epi16(_mm_unpacklo_epi8(b_vec, b_vec), 8);
+        __m128i b_hi = _mm_srai_epi16(_mm_unpackhi_epi8(b_vec, b_vec), 8);
 
         __m128i diff_lo = _mm_sub_epi16(a_lo, b_lo);
         __m128i diff_hi = _mm_sub_epi16(a_hi, b_hi);
@@ -310,34 +308,31 @@ float vek_cosine_i8_sse2(const int8_t *a, const int8_t *b, size_t n)
     __m128i dot_vec = _mm_setzero_si128();
     __m128i norm_a_vec = _mm_setzero_si128();
     __m128i norm_b_vec = _mm_setzero_si128();
-    const __m128i ones = _mm_set1_epi8(-1); /* for sign-extension */
 
     for (; i + simd_width <= n; i += simd_width) {
         __m128i a_vec = _mm_loadu_si128((const __m128i*)(a + i));
         __m128i b_vec = _mm_loadu_si128((const __m128i*)(b + i));
 
-        /* dot product - sign-extend int8 to int16 */
-        __m128i a_lo = _mm_unpacklo_epi8(a_vec, ones);
-        __m128i a_hi = _mm_unpackhi_epi8(a_vec, ones);
-        __m128i b_lo = _mm_unpacklo_epi8(b_vec, ones);
-        __m128i b_hi = _mm_unpackhi_epi8(b_vec, ones);
+        /* Sign-extend int8 to int16 via unpack+arith shift */
+        __m128i a_lo = _mm_srai_epi16(_mm_unpacklo_epi8(a_vec, a_vec), 8);
+        __m128i a_hi = _mm_srai_epi16(_mm_unpackhi_epi8(a_vec, a_vec), 8);
+        __m128i b_lo = _mm_srai_epi16(_mm_unpacklo_epi8(b_vec, b_vec), 8);
+        __m128i b_hi = _mm_srai_epi16(_mm_unpackhi_epi8(b_vec, b_vec), 8);
 
         __m128i dot_lo = _mm_madd_epi16(a_lo, b_lo);
         __m128i dot_hi = _mm_madd_epi16(a_hi, b_hi);
         dot_vec = _mm_add_epi32(dot_vec, dot_lo);
         dot_vec = _mm_add_epi32(dot_vec, dot_hi);
 
-        /* norm a */
+        /* norm a — reuse sign-extended a_lo, a_hi */
         __m128i sq_a_lo = _mm_madd_epi16(a_lo, a_lo);
         __m128i sq_a_hi = _mm_madd_epi16(a_hi, a_hi);
         norm_a_vec = _mm_add_epi32(norm_a_vec, sq_a_lo);
         norm_a_vec = _mm_add_epi32(norm_a_vec, sq_a_hi);
 
-        /* norm b */
-        __m128i b_lo2 = _mm_unpacklo_epi8(b_vec, ones);
-        __m128i b_hi2 = _mm_unpackhi_epi8(b_vec, ones);
-        __m128i sq_b_lo = _mm_madd_epi16(b_lo2, b_lo2);
-        __m128i sq_b_hi = _mm_madd_epi16(b_hi2, b_hi2);
+        /* norm b — reuse sign-extended b_lo, b_hi */
+        __m128i sq_b_lo = _mm_madd_epi16(b_lo, b_lo);
+        __m128i sq_b_hi = _mm_madd_epi16(b_hi, b_hi);
         norm_b_vec = _mm_add_epi32(norm_b_vec, sq_b_lo);
         norm_b_vec = _mm_add_epi32(norm_b_vec, sq_b_hi);
     }
