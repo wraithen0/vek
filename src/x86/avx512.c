@@ -575,10 +575,9 @@ int32_t vek_dot_b1_avx512(const uint64_t *a, const uint64_t *b, size_t n)
         __m512i a_vec = _mm512_loadu_si512((const __m512i*)(a + i));
         __m512i b_vec = _mm512_loadu_si512((const __m512i*)(b + i));
 
-        /* XNOR = ~(a ^ b), then popcnt */
-        __m512i xnor = _mm512_xor_epi64(a_vec, b_vec);
-        xnor = _mm512_ternarylogic_epi64(xnor, _mm512_set1_epi64(0), _mm512_set1_epi64(0), 0xFF); // NOT
-        __m512i popcnt = _mm512_popcnt_epi64(xnor);
+        /* AND = a & b, then popcnt */
+        __m512i and_vec = _mm512_and_epi64(a_vec, b_vec);
+        __m512i popcnt = _mm512_popcnt_epi64(and_vec);
 
         /* Horizontal sum across 8 lanes of 64-bit popcnts:
          * - low 4 lanes (0-3) are in lower 256 bits
@@ -597,9 +596,9 @@ int32_t vek_dot_b1_avx512(const uint64_t *a, const uint64_t *b, size_t n)
     /* Scalar tail: words [i, words). Mask padding bits in the final word. */
     uint64_t mask = (rem == 0) ? ~0ULL : ((1ULL << rem) - 1ULL);
     for (; i < words; i++) {
-        uint64_t xnor = ~(a[i] ^ b[i]);
-        if (i == words - 1) xnor &= mask; /* ignore padding bits past n */
-        sum_scalar += vek_popcount64(xnor);
+        uint64_t and_bits = a[i] & b[i];
+        if (i == words - 1) and_bits &= mask; /* ignore padding bits past n */
+        sum_scalar += vek_popcount64(and_bits);
     }
 
     return sum_scalar;

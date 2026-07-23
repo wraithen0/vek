@@ -268,23 +268,27 @@ uint32_t vek_l2sq_u8_neon(const uint8_t *a, const uint8_t *b, size_t n)
         uint8x16_t a_vec = vld1q_u8(a + i);
         uint8x16_t b_vec = vld1q_u8(b + i);
 
-        uint16x8_t a_lo = vmovl_u8(vget_low_u8(a_vec));
-        uint16x8_t a_hi = vmovl_u8(vget_high_u8(a_vec));
-        uint16x8_t b_lo = vmovl_u8(vget_low_u8(b_vec));
-        uint16x8_t b_hi = vmovl_u8(vget_high_u8(b_vec));
+        /* Widen to u16, then reinterpret as s16 for signed subtraction.
+         * u8 values [0,255] fit in both u16 and s16, so reinterpret is safe. */
+        int16x8_t a_lo = vreinterpretq_s16_u16(vmovl_u8(vget_low_u8(a_vec)));
+        int16x8_t a_hi = vreinterpretq_s16_u16(vmovl_u8(vget_high_u8(a_vec)));
+        int16x8_t b_lo = vreinterpretq_s16_u16(vmovl_u8(vget_low_u8(b_vec)));
+        int16x8_t b_hi = vreinterpretq_s16_u16(vmovl_u8(vget_high_u8(b_vec)));
 
-        uint16x8_t diff_lo = vsubq_u16(a_lo, b_lo);
-        uint16x8_t diff_hi = vsubq_u16(a_hi, b_hi);
+        /* Signed subtraction: wraps correctly as signed, giving [-255, 255] */
+        int16x8_t diff_lo = vsubq_s16(a_lo, b_lo);
+        int16x8_t diff_hi = vsubq_s16(a_hi, b_hi);
 
-        uint32x4_t sq_lo = vmull_u16(vget_low_u16(diff_lo), vget_low_u16(diff_lo));
-        uint32x4_t sq_hi = vmull_u16(vget_high_u16(diff_lo), vget_high_u16(diff_lo));
-        uint32x4_t sq_lo2 = vmull_u16(vget_low_u16(diff_hi), vget_low_u16(diff_hi));
-        uint32x4_t sq_hi2 = vmull_u16(vget_high_u16(diff_hi), vget_high_u16(diff_hi));
+        /* Signed widening multiply: (-255)^2 = 65025 fits in int32 */
+        int32x4_t sq_lo  = vmull_s16(vget_low_s16(diff_lo),  vget_low_s16(diff_lo));
+        int32x4_t sq_hi  = vmull_s16(vget_high_s16(diff_lo), vget_high_s16(diff_lo));
+        int32x4_t sq_lo2 = vmull_s16(vget_low_s16(diff_hi),  vget_low_s16(diff_hi));
+        int32x4_t sq_hi2 = vmull_s16(vget_high_s16(diff_hi), vget_high_s16(diff_hi));
 
-        sum_vec = vaddq_u32(sum_vec, sq_lo);
-        sum_vec = vaddq_u32(sum_vec, sq_hi);
-        sum_vec = vaddq_u32(sum_vec, sq_lo2);
-        sum_vec = vaddq_u32(sum_vec, sq_hi2);
+        sum_vec = vaddq_u32(sum_vec, vreinterpretq_u32_s32(sq_lo));
+        sum_vec = vaddq_u32(sum_vec, vreinterpretq_u32_s32(sq_hi));
+        sum_vec = vaddq_u32(sum_vec, vreinterpretq_u32_s32(sq_lo2));
+        sum_vec = vaddq_u32(sum_vec, vreinterpretq_u32_s32(sq_hi2));
     }
 
     uint32x2_t sum_lo = vget_low_u32(sum_vec);
@@ -293,8 +297,8 @@ uint32_t vek_l2sq_u8_neon(const uint8_t *a, const uint8_t *b, size_t n)
     uint32_t sum_scalar = vget_lane_u32(vpadd_u32(sum, sum), 0);
 
     for (; i < n; i++) {
-        uint32_t diff = a[i] - b[i];
-        sum_scalar += diff * diff;
+        int32_t diff = (int32_t)a[i] - (int32_t)b[i];
+        sum_scalar += (uint32_t)(diff * diff);
     }
 
     return sum_scalar;
