@@ -57,54 +57,54 @@ float vek_cosine_f32_scalar(const float *a, const float *b, size_t n)
 
 int32_t vek_dot_i8_scalar(const int8_t *a, const int8_t *b, size_t n)
 {
-    int32_t sum = 0;
+    int64_t sum = 0;
     for (size_t i = 0; i < n; i++) {
-        sum += (int32_t)a[i] * (int32_t)b[i];
+        sum += (int64_t)a[i] * (int64_t)b[i];
     }
-    return sum;
+    return (int32_t)sum;
 }
 
 uint32_t vek_dot_u8_scalar(const uint8_t *a, const uint8_t *b, size_t n)
 {
-    uint32_t sum = 0;
+    uint64_t sum = 0;
     for (size_t i = 0; i < n; i++) {
-        sum += (uint32_t)a[i] * (uint32_t)b[i];
+        sum += (uint64_t)a[i] * (uint64_t)b[i];
     }
-    return sum;
+    return (uint32_t)sum;
 }
 
 int32_t vek_l2sq_i8_scalar(const int8_t *a, const int8_t *b, size_t n)
 {
-    int32_t sum = 0;
+    int64_t sum = 0;
     for (size_t i = 0; i < n; i++) {
         int32_t diff = (int32_t)a[i] - (int32_t)b[i];
-        sum += diff * diff;
+        sum += (int64_t)(diff * diff);
     }
-    return sum;
+    return (int32_t)sum;
 }
 
 uint32_t vek_l2sq_u8_scalar(const uint8_t *a, const uint8_t *b, size_t n)
 {
-    uint32_t sum = 0;
+    uint64_t sum = 0;
     for (size_t i = 0; i < n; i++) {
         int32_t diff = (int32_t)a[i] - (int32_t)b[i];
-        sum += (uint32_t)(diff * diff);
+        sum += (uint64_t)(diff * diff);
     }
-    return sum;
+    return (uint32_t)sum;
 }
 
 float vek_cosine_i8_scalar(const int8_t *a, const int8_t *b, size_t n)
 {
-    int32_t dot = 0;
-    int32_t norm_a = 0;
-    int32_t norm_b = 0;
+    int64_t dot = 0;
+    int64_t norm_a = 0;
+    int64_t norm_b = 0;
 
     for (size_t i = 0; i < n; i++) {
         int32_t ai = a[i];
         int32_t bi = b[i];
-        dot += ai * bi;
-        norm_a += ai * ai;
-        norm_b += bi * bi;
+        dot += (int64_t)ai * bi;
+        norm_a += (int64_t)ai * ai;
+        norm_b += (int64_t)bi * bi;
     }
 
     if (norm_a == 0 || norm_b == 0) {
@@ -116,16 +116,16 @@ float vek_cosine_i8_scalar(const int8_t *a, const int8_t *b, size_t n)
 
 float vek_cosine_u8_scalar(const uint8_t *a, const uint8_t *b, size_t n)
 {
-    uint32_t dot = 0;
-    uint32_t norm_a = 0;
-    uint32_t norm_b = 0;
+    uint64_t dot = 0;
+    uint64_t norm_a = 0;
+    uint64_t norm_b = 0;
 
     for (size_t i = 0; i < n; i++) {
         uint32_t ai = a[i];
         uint32_t bi = b[i];
-        dot += ai * bi;
-        norm_a += ai * ai;
-        norm_b += bi * bi;
+        dot += (uint64_t)ai * bi;
+        norm_a += (uint64_t)ai * ai;
+        norm_b += (uint64_t)bi * bi;
     }
 
     if (norm_a == 0 || norm_b == 0) {
