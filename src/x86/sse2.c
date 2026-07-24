@@ -344,19 +344,19 @@ float vek_cosine_i8_sse2(const int8_t *a, const int8_t *b, size_t n)
 
     __m128i na2 = _mm_add_epi32(norm_a_vec, _mm_shuffle_epi32(norm_a_vec, _MM_SHUFFLE(2, 3, 0, 1)));
     __m128i na4 = _mm_add_epi32(na2, _mm_shuffle_epi32(na2, _MM_SHUFFLE(1, 0, 3, 2)));
-    int32_t norm_a_scalar = _mm_cvtsi128_si32(na4);
+    uint32_t norm_a_scalar = (uint32_t)_mm_cvtsi128_si32(na4);
 
     __m128i nb2 = _mm_add_epi32(norm_b_vec, _mm_shuffle_epi32(norm_b_vec, _MM_SHUFFLE(2, 3, 0, 1)));
     __m128i nb4 = _mm_add_epi32(nb2, _mm_shuffle_epi32(nb2, _MM_SHUFFLE(1, 0, 3, 2)));
-    int32_t norm_b_scalar = _mm_cvtsi128_si32(nb4);
+    uint32_t norm_b_scalar = (uint32_t)_mm_cvtsi128_si32(nb4);
 
     /* Tail */
     for (; i < n; i++) {
         int32_t ai = a[i];
         int32_t bi = b[i];
         dot_scalar += ai * bi;
-        norm_a_scalar += ai * ai;
-        norm_b_scalar += bi * bi;
+        norm_a_scalar += (uint32_t)(ai * ai);
+        norm_b_scalar += (uint32_t)(bi * bi);
     }
 
     float norm_a_sqrt = sqrtf((float)norm_a_scalar);
@@ -413,15 +413,15 @@ float vek_cosine_u8_sse2(const uint8_t *a, const uint8_t *b, size_t n)
     /* Horizontal sums */
     __m128i dot2 = _mm_add_epi32(dot_vec, _mm_shuffle_epi32(dot_vec, _MM_SHUFFLE(2, 3, 0, 1)));
     __m128i dot4 = _mm_add_epi32(dot2, _mm_shuffle_epi32(dot2, _MM_SHUFFLE(1, 0, 3, 2)));
-    int32_t dot_scalar = _mm_cvtsi128_si32(dot4);
+    uint32_t dot_scalar = (uint32_t)_mm_cvtsi128_si32(dot4);
 
     __m128i na2 = _mm_add_epi32(norm_a_vec, _mm_shuffle_epi32(norm_a_vec, _MM_SHUFFLE(2, 3, 0, 1)));
     __m128i na4 = _mm_add_epi32(na2, _mm_shuffle_epi32(na2, _MM_SHUFFLE(1, 0, 3, 2)));
-    int32_t norm_a_scalar = _mm_cvtsi128_si32(na4);
+    uint32_t norm_a_scalar = (uint32_t)_mm_cvtsi128_si32(na4);
 
     __m128i nb2 = _mm_add_epi32(norm_b_vec, _mm_shuffle_epi32(norm_b_vec, _MM_SHUFFLE(2, 3, 0, 1)));
     __m128i nb4 = _mm_add_epi32(nb2, _mm_shuffle_epi32(nb2, _MM_SHUFFLE(1, 0, 3, 2)));
-    int32_t norm_b_scalar = _mm_cvtsi128_si32(nb4);
+    uint32_t norm_b_scalar = (uint32_t)_mm_cvtsi128_si32(nb4);
 
     /* Tail */
     for (; i < n; i++) {

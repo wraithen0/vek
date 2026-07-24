@@ -368,22 +368,22 @@ float vek_cosine_i8_avx2(const int8_t *a, const int8_t *b, size_t n)
     __m128i na = _mm_add_epi32(na_hi, na_lo);
     na = _mm_add_epi32(na, _mm_shuffle_epi32(na, _MM_SHUFFLE(2, 3, 0, 1)));
     na = _mm_add_epi32(na, _mm_shuffle_epi32(na, _MM_SHUFFLE(1, 0, 3, 2)));
-    int32_t norm_a_scalar = _mm_cvtsi128_si32(na);
+    uint32_t norm_a_scalar = (uint32_t)_mm_cvtsi128_si32(na);
 
     __m128i nb_hi = _mm256_extracti128_si256(norm_b_vec, 1);
     __m128i nb_lo = _mm256_castsi256_si128(norm_b_vec);
     __m128i nb = _mm_add_epi32(nb_hi, nb_lo);
     nb = _mm_add_epi32(nb, _mm_shuffle_epi32(nb, _MM_SHUFFLE(2, 3, 0, 1)));
     nb = _mm_add_epi32(nb, _mm_shuffle_epi32(nb, _MM_SHUFFLE(1, 0, 3, 2)));
-    int32_t norm_b_scalar = _mm_cvtsi128_si32(nb);
+    uint32_t norm_b_scalar = (uint32_t)_mm_cvtsi128_si32(nb);
 
     /* Tail */
     for (; i < n; i++) {
         int32_t ai = a[i];
         int32_t bi = b[i];
         dot_scalar += ai * bi;
-        norm_a_scalar += ai * ai;
-        norm_b_scalar += bi * bi;
+        norm_a_scalar += (uint32_t)(ai * ai);
+        norm_b_scalar += (uint32_t)(bi * bi);
     }
 
     float norm_a_sqrt = sqrtf((float)norm_a_scalar);
@@ -445,21 +445,21 @@ float vek_cosine_u8_avx2(const uint8_t *a, const uint8_t *b, size_t n)
     __m128i dot = _mm_add_epi32(dot_hi, dot_lo);
     dot = _mm_add_epi32(dot, _mm_shuffle_epi32(dot, _MM_SHUFFLE(2, 3, 0, 1)));
     dot = _mm_add_epi32(dot, _mm_shuffle_epi32(dot, _MM_SHUFFLE(1, 0, 3, 2)));
-    int32_t dot_scalar = _mm_cvtsi128_si32(dot);
+    uint32_t dot_scalar = (uint32_t)_mm_cvtsi128_si32(dot);
 
     __m128i na_hi = _mm256_extracti128_si256(norm_a_vec, 1);
     __m128i na_lo = _mm256_castsi256_si128(norm_a_vec);
     __m128i na = _mm_add_epi32(na_hi, na_lo);
     na = _mm_add_epi32(na, _mm_shuffle_epi32(na, _MM_SHUFFLE(2, 3, 0, 1)));
     na = _mm_add_epi32(na, _mm_shuffle_epi32(na, _MM_SHUFFLE(1, 0, 3, 2)));
-    int32_t norm_a_scalar = _mm_cvtsi128_si32(na);
+    uint32_t norm_a_scalar = (uint32_t)_mm_cvtsi128_si32(na);
 
     __m128i nb_hi = _mm256_extracti128_si256(norm_b_vec, 1);
     __m128i nb_lo = _mm256_castsi256_si128(norm_b_vec);
     __m128i nb = _mm_add_epi32(nb_hi, nb_lo);
     nb = _mm_add_epi32(nb, _mm_shuffle_epi32(nb, _MM_SHUFFLE(2, 3, 0, 1)));
     nb = _mm_add_epi32(nb, _mm_shuffle_epi32(nb, _MM_SHUFFLE(1, 0, 3, 2)));
-    int32_t norm_b_scalar = _mm_cvtsi128_si32(nb);
+    uint32_t norm_b_scalar = (uint32_t)_mm_cvtsi128_si32(nb);
 
     /* Tail */
     for (; i < n; i++) {

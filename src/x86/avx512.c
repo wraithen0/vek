@@ -438,15 +438,15 @@ float vek_cosine_i8_avx512(const int8_t *a, const int8_t *b, size_t n)
     int32_t b_sum_scalar = _mm512_reduce_add_epi32(b_sum_vec);
     dot_scalar += (-128) * b_sum_scalar; /* VNNI bias correction: a was biased by -128, so subtract 128*sum(b) */
 
-    int32_t norm_a_scalar = _mm512_reduce_add_epi32(norm_a_vec);
-    int32_t norm_b_scalar = _mm512_reduce_add_epi32(norm_b_vec);
+    uint32_t norm_a_scalar = (uint32_t)_mm512_reduce_add_epi32(norm_a_vec);
+    uint32_t norm_b_scalar = (uint32_t)_mm512_reduce_add_epi32(norm_b_vec);
 
     for (; i < n; i++) {
         int32_t ai = a[i];
         int32_t bi = b[i];
         dot_scalar += ai * bi;
-        norm_a_scalar += ai * ai;
-        norm_b_scalar += bi * bi;
+        norm_a_scalar += (uint32_t)(ai * ai);
+        norm_b_scalar += (uint32_t)(bi * bi);
     }
 
     float norm_a_sqrt = sqrtf((float)norm_a_scalar);
@@ -534,9 +534,9 @@ float vek_cosine_u8_avx512(const uint8_t *a, const uint8_t *b, size_t n)
         norm_b_vec = _mm512_add_epi32(norm_b_vec, sq_b_hi2);
     }
 
-    int32_t dot_scalar = _mm512_reduce_add_epi32(dot_vec);
-    int32_t norm_a_scalar = _mm512_reduce_add_epi32(norm_a_vec);
-    int32_t norm_b_scalar = _mm512_reduce_add_epi32(norm_b_vec);
+    uint32_t dot_scalar = (uint32_t)_mm512_reduce_add_epi32(dot_vec);
+    uint32_t norm_a_scalar = (uint32_t)_mm512_reduce_add_epi32(norm_a_vec);
+    uint32_t norm_b_scalar = (uint32_t)_mm512_reduce_add_epi32(norm_b_vec);
 
     for (; i < n; i++) {
         uint32_t ai = a[i];
