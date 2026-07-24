@@ -155,51 +155,53 @@ make bench
 ./bench_kernels 10000
 ```
 
-Example f32 output (n=1024, AVX-512):
+### Python C Extension
 
-```
-  Kernel               ns/iter     cycles   GFLOP/s   result
-  vek_dot_f32           87.30      261.91     23.5    196.87
-  vek_l2sq_f32          92.82      278.47     22.1    393.74
-  vek_cosine_f32       140.10      420.31     14.6      0.55
-```
+For Python, vek provides a native C extension that eliminates ctypes overhead:
 
-Quantized int8 (n=1024, AVX-512 VNNI):
-
-```
-  Kernel                  ns/iter    cycles    GOPS/s  result
-  vek_dot_i8               20.04       60.13    102.2    -2931
-  vek_l2sq_i8              60.98      182.95     33.6   -162337
-  vek_cosine_i8            81.86      245.58              0.537
+```bash
+pip install -e .
 ```
 
-Binary 1-bit (n=128 bits, AVX-512 VPOPCNTDQ):
+```python
+import numpy as np
+import _vek_cext as vek
 
-```
-  Kernel                  ns/iter    cycles    GOPS/s  result
-  vek_dot_b1               3.12        9.36     82.0     64
-  vek_hamming_b1           3.12        9.36     82.0      0
-  vek_cosine_b1            4.87       14.61              1.000
+a = np.random.randn(1024).astype(np.float32)
+b = np.random.randn(1024).astype(np.float32)
+
+dot = vek.dot_f32(a, b)
+l2   = vek.l2sq_f32(a, b)
+cos  = vek.cosine_f32(a, b)
 ```
 
-### Cross-Library Comparison
+The C extension is 2x faster than ctypes and competitive with simsimd:
+
+| Library | Dot (n=8192) | L2 (n=8192) | Cosine (n=8192) |
+|---------|-------------|-------------|-----------------|
+| **vek (C ext)** | **1175 ns** | **3539 ns** | **4052 ns** |
+| simsimd | 1477 ns | 4606 ns | 5011 ns |
+| usearch | 3044 ns | 9883 ns | 10109 ns |
+| faiss | 6368 ns | 20899 ns | 18618 ns |
+
+### Cross-Library Comparison (f32, ns/iter)
 
 | Size | **Dot** vek | faiss | usearch | simsimd | **L2** vek | faiss | usearch | simsimd | **Cosine** vek | faiss | usearch | simsimd |
 |------|------------|-------|---------|---------|------------|-------|---------|---------|---------------|-------|---------|---------|
-| 32   | 4576 | 721 | 725 | **267** | 4690 | 3340 | 3357 | **276** | 4796 | 3731 | 3797 | **286** |
-| 64   | 4574 | 736 | 732 | **271** | 4547 | 3373 | 3404 | **269** | 4757 | 3726 | 3716 | **292** |
-| 128  | 4519 | 729 | 725 | **265** | 4685 | 3607 | 3680 | **298** | 4611 | 3712 | 3713 | **294** |
-| 256  | 4676 | 761 | 749 | **281** | 4908 | 3699 | 3693 | **305** | 4674 | 3790 | 3802 | **294** |
-| 512  | 4759 | 785 | 773 | **282** | 4885 | 4106 | 4130 | **315** | 4720 | 3919 | 3909 | **327** |
-| 1024 | 4800 | 749 | 766 | **354** | 4863 | 4544 | 4501 | **348** | 4817 | 3846 | 3872 | **367** |
-| 2048 | 4913 | 795 | 845 | **463** | 5055 | 5684 | 5356 | **422** | 5078 | 4171 | 4139 | **448** |
-| 4096 | 5293 | 1179 | 1007 | **592** | 5182 | 7061 | 7051 | **589** | 5477 | 4909 | 4916 | **647** |
-| 8192 | 6085 | 1760 | 1525 | **1199** | 5832 | 10388 | 10312 | **1219** | 5994 | 6423 | 6015 | **1303** |
+| 32   | **189** | 5691 | 1399 | 385 | **200** | 5708 | 1391 | 444 | **608** | 15924 | 3620 | 1151 |
+| 64   | **219** | 6043 | 1417 | 345 | **191** | 5853 | 1337 | 519 | **486** | 17648 | 4031 | 1223 |
+| 128  | **221** | 5892 | 1544 | 324 | **307** | 10555 | 3150 | 1035 | **537** | 15836 | 3595 | 1368 |
+| 256  | **250** | 5578 | 1366 | 340 | **427** | 14445 | 3280 | 1123 | **760** | 15822 | 3757 | 1269 |
+| 512  | **189** | 5958 | 1543 | 351 | **520** | 15020 | 3989 | 1651 | **577** | 16672 | 3844 | 1196 |
+| 1024 | **218** | 5665 | 1506 | 386 | **849** | 16430 | 4509 | 1260 | **733** | 16881 | 4622 | 1491 |
+| 2048 | **285** | 5987 | 1705 | 504 | **750** | 16879 | 5115 | 2002 | **1056** | 16408 | 5041 | 2108 |
+| 4096 | **465** | 6363 | 2397 | 688 | **1052** | 16844 | 6555 | 3183 | **1205** | 18923 | 6695 | 2796 |
+| 8192 | **1175** | 6368 | 3044 | 1477 | 3539 | 20899 | 9883 | **4606** | **4052** | 18618 | 10109 | 5011 |
 
 **Notes (ns/iter, lower is better, **bold** = fastest):**
-- `simsimd` is the fastest across all ops and sizes on this hardware
-- `vek` is competitive with `faiss`/`usearch` on dot/L2 at 2048+ and binary ops
-- Benchmarks were run under the CMake build with AVX-512 VNNI/VPOPCNTDQ enabled
+- vek uses the Python C extension for zero-overhead calls
+- vek is fastest on dot/L2 at small sizes; simsimd edges ahead at 4096+ on L2/cosine
+- Benchmarks run with AVX-512F/VNNI/VPOPCNTDQ enabled
 
 ## Roadmap
 
