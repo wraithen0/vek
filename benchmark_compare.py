@@ -1,63 +1,66 @@
 #!/usr/bin/env python3
 """
-vek vs faiss vs usearch vs simsimd - Real Benchmark
-Compares actual performance of vek against established libraries
+vek vs faiss vs usearch vs simsimd — real C library benchmark.
+Only f32 kernels. Each library's native functions are called directly.
 """
 
 import sys
 import time
 import ctypes
+from ctypes import POINTER, c_float, c_size_t
 
-# Import simsimd BEFORE loading libvek to avoid datatype issues
+import numpy as np
+
+# --- simsimd (native Python bindings to C) ---
+SIMSIMD_AVAILABLE = False
 try:
     import simsimd
-    SIMSIMD_AVAILABLE = True
+    if hasattr(simsimd, 'dot') and hasattr(simsimd, 'l2') and hasattr(simsimd, 'cosine'):
+        SIMSIMD_AVAILABLE = True
 except ImportError:
-    SIMSIMD_AVAILABLE = False
+    pass
 
-# Load vek BEFORE numpy to avoid simsimd datatype issues
+# --- vek (via ctypes) ---
+VEK_AVAILABLE = False
 try:
     libvek = ctypes.CDLL('./libvek.so')
     libvek.vek_init()
+    libvek.vek_dot_f32.argtypes = (POINTER(c_float), POINTER(c_float), c_size_t)
+    libvek.vek_dot_f32.restype = c_float
+    libvek.vek_l2sq_f32.argtypes = (POINTER(c_float), POINTER(c_float), c_size_t)
+    libvek.vek_l2sq_f32.restype = c_float
+    libvek.vek_cosine_f32.argtypes = (POINTER(c_float), POINTER(c_float), c_size_t)
+    libvek.vek_cosine_f32.restype = c_float
     VEK_AVAILABLE = True
 except OSError:
-    VEK_AVAILABLE = False
+    pass
 
-# Then import numpy and other libraries
-import time
-import numpy as np
-
-# Try to import libraries
+# --- faiss (via C extensions) ---
+FAISS_AVAILABLE = False
 try:
     import faiss
-    FAISS_AVAILABLE = True
+    if hasattr(faiss, 'IndexFlatIP') and hasattr(faiss, 'normalize_L2'):
+        FAISS_AVAILABLE = True
 except ImportError:
-    FAISS_AVAILABLE = False
+    pass
 
+# --- usearch (via C extensions) ---
+USEARCH_AVAILABLE = False
 try:
-    import usearch
-    USEARCH_AVAILABLE = True
+    from usearch.index import Index as USearchIndex
+    if hasattr(USearchIndex, 'pairwise_distance'):
+        USEARCH_AVAILABLE = True
 except ImportError:
-    USEARCH_AVAILABLE = False
+    pass
 
-# Benchmark parameters
+
 VECTOR_SIZES = [32, 64, 128, 256, 512, 1024, 2048, 4096, 8192]
 ITERATIONS = 10000
 
 
-def generate_vectors(n):
-    """Generate random float32 vectors"""
-    a = np.random.randn(n).astype(np.float32)
-    b = np.random.randn(n).astype(np.float32)
-    return a, b
-
-
-def bench_func(name, func, iters):
-    """Benchmark a function and return ns/iter"""
-    # Warmup
+def bench_func(func, iters):
     for _ in range(100):
         func()
-    # Benchmark
     start = time.perf_counter()
     for _ in range(iters):
         func()
@@ -65,209 +68,150 @@ def bench_func(name, func, iters):
     return (end - start) * 1e9 / iters
 
 
-def run_dot_bench():
-    print("\n" + "="*100)
-    print("DOT PRODUCT BENCHMARK")
-    print("="*100)
-    print(f"  Size |        vek |      faiss |    usearch |    simsimd")
-    print(f"       |      ns/it |      ns/it |      ns/it |      ns/it")
-    print("-"*100)
+def _timed_run(label, fn, iters):
+    try:
+        return bench_func(fn, iters)
+    except Exception as e:
+        return None
 
-    for n in VECTOR_SIZES:
-        a, b = generate_vectors(n)
+
+def run_bench(name, vek_fn, faiss_setup, faiss_fn, usearch_setup, usearch_fn,
+              simsimd_fn, sizes=VECTOR_SIZES):
+    print("\n" + "=" * 100)
+    print(f"{name} (f32)")
+    print("=" * 100)
+    print(f"  {'size'.rjust(4)} | {'vek':>11} | {'faiss':>11} | {'usearch':>11} | {'simsimd':>11}")
+    print("  " + "-" * 4 + " | " + " | ".join(["-" * 11] * 4))
+
+    for n in sizes:
+        a = np.ascontiguousarray(np.random.randn(n).astype(np.float32))
+        b = np.ascontiguousarray(np.random.randn(n).astype(np.float32))
         iters = max(1000, ITERATIONS * 1024 // n)
 
-        # Pre-create INDEPENDENT copies for simsimd - ensure same dtype
-        a_c = np.ascontiguousarray(a.copy(), dtype=np.float32)
-        b_c = np.ascontiguousarray(b.copy(), dtype=np.float32)
-        a_c.flags.writeable = True
-        b_c.flags.writeable = True
-
-        # Warmup - use same arrays as benchmark
-        a_warm = np.ascontiguousarray(a.copy(), dtype=np.float32)
-        b_warm = np.ascontiguousarray(b.copy(), dtype=np.float32)
-        a_warm.flags.writeable = True
-        b_warm.flags.writeable = True
-
-        for _ in range(100):
-            if VEK_AVAILABLE:
-                from ctypes import POINTER, c_float
-                libvek.vek_dot_f32(a.ctypes.data_as(POINTER(c_float)), 
-                                    b.ctypes.data_as(POINTER(c_float)), n)
-            if FAISS_AVAILABLE:
-                np.dot(a, b)
-            if USEARCH_AVAILABLE:
-                np.dot(a, b)
-            if SIMSIMD_AVAILABLE:
-                simsimd.dot(a_warm, b_warm)
-
-        # Benchmark vek
-        if VEK_AVAILABLE:
-            from ctypes import POINTER, c_float
-            def vek_dot():
-                libvek.vek_dot_f32(a.ctypes.data_as(POINTER(c_float)), 
-                                    b.ctypes.data_as(POINTER(c_float)), n)
-            vek_ns = bench_func("vek", vek_dot, iters)
-        else:
-            vek_ns = float('nan')
-
-        # faiss (using numpy dot as proxy)
-        if FAISS_AVAILABLE:
-            faiss_ns = bench_func("faiss", lambda: np.dot(a, b), iters)
-        else:
-            faiss_ns = float('nan')
-
-        # usearch
-        if USEARCH_AVAILABLE:
-            usearch_ns = bench_func("usearch", lambda: np.dot(a, b), iters)
-        else:
-            usearch_ns = float('nan')
-
-        # simsimd - use INDEPENDENT copies with explicit dtype matching
-        if SIMSIMD_AVAILABLE:
-            a_s = np.ascontiguousarray(a_c, dtype=np.float32)
-            b_s = np.ascontiguousarray(b_c, dtype=np.float32)
-            simsimd_ns = bench_func("simsimd", lambda: simsimd.dot(a_s, b_s), iters)
-        else:
-            simsimd_ns = float('nan')
-
-        print(f"  {n:4d} | {vek_ns:10.2f} | {faiss_ns:10.2f} | {usearch_ns:10.2f} | {simsimd_ns:10.2f}")
-
-
-def run_l2_bench():
-    print("\n" + "="*100)
-    print("L2 DISTANCE BENCHMARK")
-    print("="*100)
-    print(f"  Size |        vek |      faiss |    usearch |    simsimd")
-    print(f"       |      ns/it |      ns/it |      ns/it |      ns/it")
-    print("-"*100)
-
-    for n in VECTOR_SIZES:
-        a, b = generate_vectors(n)
-        iters = max(1000, ITERATIONS * 1024 // n)
-
-        # Pre-create INDEPENDENT copies for simsimd
-        a_c = np.ascontiguousarray(a.copy(), dtype=np.float32)
-        b_c = np.ascontiguousarray(b.copy(), dtype=np.float32)
-        a_c.flags.writeable = True
-        b_c.flags.writeable = True
-
-        # Warmup
-        for _ in range(100):
-            if VEK_AVAILABLE:
-                from ctypes import POINTER, c_float
-                libvek.vek_l2sq_f32(a.ctypes.data_as(POINTER(c_float)), 
-                                     b.ctypes.data_as(POINTER(c_float)), n)
-            if FAISS_AVAILABLE:
-                np.sum((a - b)**2)
-            if USEARCH_AVAILABLE:
-                np.sum((a - b)**2)
-            if SIMSIMD_AVAILABLE:
-                simsimd.l2(a_c, b_c)
-
-        if VEK_AVAILABLE:
-            from ctypes import POINTER, c_float
-            def vek_l2():
-                libvek.vek_l2sq_f32(a.ctypes.data_as(POINTER(c_float)), 
-                                     b.ctypes.data_as(POINTER(c_float)), n)
-            vek_ns = bench_func("vek", vek_l2, iters)
-        else:
-            vek_ns = float('nan')
+        vek_ns = _timed_run(
+            "vek", lambda: vek_fn(a, b, n), iters) if VEK_AVAILABLE else None
 
         if FAISS_AVAILABLE:
-            faiss_ns = bench_func("faiss", lambda: np.sum((a - b)**2), iters)
+            ctx = faiss_setup(a, b, n) if faiss_setup else None
+            faiss_ns = _timed_run("faiss", lambda: faiss_fn(ctx, a, b, n), iters)
         else:
-            faiss_ns = float('nan')
+            faiss_ns = None
 
         if USEARCH_AVAILABLE:
-            usearch_ns = bench_func("usearch", lambda: np.sum((a - b)**2), iters)
+            ctx = usearch_setup(a, b, n) if usearch_setup else None
+            usearch_ns = _timed_run("usearch", lambda: usearch_fn(ctx), iters)
         else:
-            usearch_ns = float('nan')
+            usearch_ns = None
 
-        if SIMSIMD_AVAILABLE:
-            simsimd_ns = bench_func("simsimd", lambda: simsimd.l2(a_c, b_c), iters)
+        if simsimd_fn is not None:
+            simsimd_ns = _timed_run("simsimd", lambda: simsimd_fn(a, b), iters)
         else:
-            simsimd_ns = float('nan')
+            simsimd_ns = None
 
-        print(f"  {n:4d} | {vek_ns:10.2f} | {faiss_ns:10.2f} | {usearch_ns:10.2f} | {simsimd_ns:10.2f}")
+        def _fmt(v):
+            return f"{v:10.2f} " if v is not None else f"{'N/A':>11}"
+
+        print(f"  {n:4d} | {_fmt(vek_ns)} | {_fmt(faiss_ns)} | "
+              f"{_fmt(usearch_ns)} | {_fmt(simsimd_ns)}")
 
 
-def run_cosine_bench():
-    print("\n" + "="*100)
-    print("COSINE SIMILARITY BENCHMARK")
-    print("="*100)
-    print(f"  Size |        vek |      faiss |    usearch |    simsimd")
-    print(f"       |      ns/it |      ns/it |      ns/it |      ns/it")
-    print("-"*100)
+# --- vek wrappers ---
+def _vek_dot(a, b, n):
+    a_ptr = a.ctypes.data_as(POINTER(c_float))
+    b_ptr = b.ctypes.data_as(POINTER(c_float))
+    return libvek.vek_dot_f32(a_ptr, b_ptr, n)
 
-    for n in VECTOR_SIZES:
-        a, b = generate_vectors(n)
-        iters = max(1000, ITERATIONS * 1024 // n)
+def _vek_l2(a, b, n):
+    a_ptr = a.ctypes.data_as(POINTER(c_float))
+    b_ptr = b.ctypes.data_as(POINTER(c_float))
+    return libvek.vek_l2sq_f32(a_ptr, b_ptr, n)
 
-        # Pre-create INDEPENDENT copies for simsimd
-        a_c = np.ascontiguousarray(a.copy(), dtype=np.float32)
-        b_c = np.ascontiguousarray(b.copy(), dtype=np.float32)
-        a_c.flags.writeable = True
-        b_c.flags.writeable = True
+def _vek_cos(a, b, n):
+    a_ptr = a.ctypes.data_as(POINTER(c_float))
+    b_ptr = b.ctypes.data_as(POINTER(c_float))
+    return libvek.vek_cosine_f32(a_ptr, b_ptr, n)
 
-        # Warmup
-        for _ in range(100):
-            if VEK_AVAILABLE:
-                from ctypes import POINTER, c_float
-                libvek.vek_cosine_f32(a.ctypes.data_as(POINTER(c_float)), 
-                                       b.ctypes.data_as(POINTER(c_float)), n)
-            if FAISS_AVAILABLE:
-                np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
-            if USEARCH_AVAILABLE:
-                np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
-            if SIMSIMD_AVAILABLE:
-                simsimd.cosine(a_c, b_c)
+# --- faiss wrappers ---
+def _faiss_dot_setup(a, b, n):
+    idx = faiss.IndexFlatIP(n)
+    idx.add(a.reshape(1, -1))
+    return idx
 
-        if VEK_AVAILABLE:
-            from ctypes import POINTER, c_float
-            def vek_cos():
-                libvek.vek_cosine_f32(a.ctypes.data_as(POINTER(c_float)), 
-                                       b.ctypes.data_as(POINTER(c_float)), n)
-            vek_ns = bench_func("vek", vek_cos, iters)
-        else:
-            vek_ns = float('nan')
+def _faiss_dot_run(idx, a, b, n):
+    d, _ = idx.search(b.reshape(1, -1), 1)
+    return d[0, 0]
 
-        if FAISS_AVAILABLE:
-            faiss_ns = bench_func("faiss", lambda: np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b)), iters)
-        else:
-            faiss_ns = float('nan')
+def _faiss_l2_setup(a, b, n):
+    idx = faiss.IndexFlatL2(n)
+    idx.add(a.reshape(1, -1))
+    return idx
 
-        if USEARCH_AVAILABLE:
-            usearch_ns = bench_func("usearch", lambda: np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b)), iters)
-        else:
-            usearch_ns = float('nan')
+def _faiss_l2_run(idx, a, b, n):
+    d, _ = idx.search(b.reshape(1, -1), 1)
+    return d[0, 0]
 
-        if SIMSIMD_AVAILABLE:
-            simsimd_ns = bench_func("simsimd", lambda: simsimd.cosine(a_c, b_c), iters)
-        else:
-            simsimd_ns = float('nan')
+def _faiss_cos_setup(a, b, n):
+    an = a.copy()
+    bn = b.copy()
+    faiss.normalize_L2(an.reshape(1, -1))
+    faiss.normalize_L2(bn.reshape(1, -1))
+    idx = faiss.IndexFlatIP(n)
+    idx.add(an.reshape(1, -1))
+    return (idx, bn)
 
-        print(f"  {n:4d} | {vek_ns:10.2f} | {faiss_ns:10.2f} | {usearch_ns:10.2f} | {simsimd_ns:10.2f}")
+def _faiss_cos_run(ctx, a, b, n):
+    idx, bn = ctx
+    d, _ = idx.search(bn.reshape(1, -1), 1)
+    return d[0, 0]
+
+# --- usearch wrappers ---
+def _usearch_setup(a, b, n, metric):
+    idx = USearchIndex(ndim=n, metric=metric, dtype='f32')
+    idx.add(0, a)
+    idx.add(1, b)
+    return idx
+
+def _usearch_dot_run(idx, a, b, n):
+    return -idx.pairwise_distance(0, 1)
+
+def _usearch_l2_run(idx, a, b, n):
+    return idx.pairwise_distance(0, 1)
+
+def _usearch_cos_run(idx, a, b, n):
+    return 1.0 - idx.pairwise_distance(0, 1)
 
 
 if __name__ == "__main__":
-    import time
-    
-    print("="*100)
-    print("VEK vs FAISS vs USearch vs SimSIMD - Real Benchmark")
-    print(f"CPU: Intel i5-1135G7 @ 2.40GHz (AVX-512)")
-    print(f"Python: 3.11, NumPy: {np.__version__}")
-    print(f"faiss: 1.14.3")
-    print(f"usearch: 2.26.0")
-    print(f"simsimd: 6.5.16")
+    print("=" * 106)
+    print("vek vs faiss vs usearch vs simsimd — Native C Benchmark (f32)")
+    print("=" * 106)
     if VEK_AVAILABLE:
-        print(f"vek: avx512")
-    print("="*100)
+        libvek.vek_backend_name.restype = ctypes.c_char_p
+        print(f"  vek backend:  {libvek.vek_backend_name().decode()}")
+    print(f"  numpy:        {np.__version__}")
+    print(f"  faiss:        {'available' if FAISS_AVAILABLE else 'not found'}")
+    print(f"  usearch:      {'available' if USEARCH_AVAILABLE else 'not found'}")
+    print(f"  simsimd:      {'available' if SIMSIMD_AVAILABLE else 'not found'}")
+    print("=" * 106)
 
-    run_dot_bench()
-    run_l2_bench()
-    run_cosine_bench()
+    _ss_dot = getattr(simsimd, 'dot', None) if SIMSIMD_AVAILABLE else None
+    _ss_l2 = getattr(simsimd, 'l2', None) if SIMSIMD_AVAILABLE else None
+    _ss_cos = getattr(simsimd, 'cosine', None) if SIMSIMD_AVAILABLE else None
 
-    print("\n" + "="*100)
-    print("SUMMARY")
-    print("="*100)
+    run_bench("DOT PRODUCT",
+              _vek_dot,
+              _faiss_dot_setup, _faiss_dot_run,
+              lambda a, b, n: _usearch_setup(a, b, n, 'ip'), _usearch_dot_run,
+              _ss_dot)
+
+    run_bench("L2 DISTANCE",
+              _vek_l2,
+              _faiss_l2_setup, _faiss_l2_run,
+              lambda a, b, n: _usearch_setup(a, b, n, 'l2sq'), _usearch_l2_run,
+              _ss_l2)
+
+    run_bench("COSINE SIMILARITY",
+              _vek_cos,
+              _faiss_cos_setup, _faiss_cos_run,
+              lambda a, b, n: _usearch_setup(a, b, n, 'cos'), _usearch_cos_run,
+              _ss_cos)
