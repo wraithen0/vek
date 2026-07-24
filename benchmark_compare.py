@@ -20,20 +20,31 @@ try:
 except ImportError:
     pass
 
-# --- vek (via ctypes) ---
+# --- vek (C extension preferred, ctypes fallback) ---
 VEK_AVAILABLE = False
+VEK_MODE = "none"
 try:
-    libvek = ctypes.CDLL('./libvek.so')
-    libvek.vek_init()
-    libvek.vek_dot_f32.argtypes = (POINTER(c_float), POINTER(c_float), c_size_t)
-    libvek.vek_dot_f32.restype = c_float
-    libvek.vek_l2sq_f32.argtypes = (POINTER(c_float), POINTER(c_float), c_size_t)
-    libvek.vek_l2sq_f32.restype = c_float
-    libvek.vek_cosine_f32.argtypes = (POINTER(c_float), POINTER(c_float), c_size_t)
-    libvek.vek_cosine_f32.restype = c_float
+    import _vek_cext as vek_cext
+    vek_cext.init()
     VEK_AVAILABLE = True
-except OSError:
+    VEK_MODE = "cext"
+except ImportError:
     pass
+
+if not VEK_AVAILABLE:
+    try:
+        libvek = ctypes.CDLL('./libvek.so')
+        libvek.vek_init()
+        libvek.vek_dot_f32.argtypes = (POINTER(c_float), POINTER(c_float), c_size_t)
+        libvek.vek_dot_f32.restype = c_float
+        libvek.vek_l2sq_f32.argtypes = (POINTER(c_float), POINTER(c_float), c_size_t)
+        libvek.vek_l2sq_f32.restype = c_float
+        libvek.vek_cosine_f32.argtypes = (POINTER(c_float), POINTER(c_float), c_size_t)
+        libvek.vek_cosine_f32.restype = c_float
+        VEK_AVAILABLE = True
+        VEK_MODE = "ctypes"
+    except OSError:
+        pass
 
 # --- faiss (via C extensions) ---
 FAISS_AVAILABLE = False
@@ -116,20 +127,26 @@ def run_bench(name, vek_fn, faiss_setup, faiss_fn, usearch_setup, usearch_fn,
 
 
 # --- vek wrappers ---
-def _vek_dot(a, b, n):
-    a_ptr = a.ctypes.data_as(POINTER(c_float))
-    b_ptr = b.ctypes.data_as(POINTER(c_float))
-    return libvek.vek_dot_f32(a_ptr, b_ptr, n)
-
-def _vek_l2(a, b, n):
-    a_ptr = a.ctypes.data_as(POINTER(c_float))
-    b_ptr = b.ctypes.data_as(POINTER(c_float))
-    return libvek.vek_l2sq_f32(a_ptr, b_ptr, n)
-
-def _vek_cos(a, b, n):
-    a_ptr = a.ctypes.data_as(POINTER(c_float))
-    b_ptr = b.ctypes.data_as(POINTER(c_float))
-    return libvek.vek_cosine_f32(a_ptr, b_ptr, n)
+if VEK_MODE == "cext":
+    def _vek_dot(a, b, n):
+        return vek_cext.dot_f32(a, b)
+    def _vek_l2(a, b, n):
+        return vek_cext.l2sq_f32(a, b)
+    def _vek_cos(a, b, n):
+        return vek_cext.cosine_f32(a, b)
+else:
+    def _vek_dot(a, b, n):
+        a_ptr = a.ctypes.data_as(POINTER(c_float))
+        b_ptr = b.ctypes.data_as(POINTER(c_float))
+        return libvek.vek_dot_f32(a_ptr, b_ptr, n)
+    def _vek_l2(a, b, n):
+        a_ptr = a.ctypes.data_as(POINTER(c_float))
+        b_ptr = b.ctypes.data_as(POINTER(c_float))
+        return libvek.vek_l2sq_f32(a_ptr, b_ptr, n)
+    def _vek_cos(a, b, n):
+        a_ptr = a.ctypes.data_as(POINTER(c_float))
+        b_ptr = b.ctypes.data_as(POINTER(c_float))
+        return libvek.vek_cosine_f32(a_ptr, b_ptr, n)
 
 
 # --- faiss wrappers ---
@@ -187,8 +204,11 @@ if __name__ == "__main__":
     print("vek vs faiss vs usearch vs simsimd — Native C Benchmark (f32)")
     print("=" * 106)
     if VEK_AVAILABLE:
-        libvek.vek_backend_name.restype = ctypes.c_char_p
-        print(f"  vek backend:  {libvek.vek_backend_name().decode()}")
+        if VEK_MODE == "cext":
+            print(f"  vek backend:  {vek_cext.backend()} (C extension)")
+        else:
+            libvek.vek_backend_name.restype = ctypes.c_char_p
+            print(f"  vek backend:  {libvek.vek_backend_name().decode()} (ctypes)")
     print(f"  numpy:        {np.__version__}")
     print(f"  faiss:        {'available' if FAISS_AVAILABLE else 'not found'}")
     print(f"  usearch:      {'available' if USEARCH_AVAILABLE else 'not found'}")

@@ -8,30 +8,48 @@
 #include <math.h>
 #include "vek.h"
 
-/* AVX2 dot product: sum(a[i] * b[i]) */
+/* AVX2 dot product: sum(a[i] * b[i])
+ * 4 accumulators + 4x unroll, processes 32 floats per iteration */
 float vek_dot_f32_avx2(const float *a, const float *b, size_t n)
 {
-    const size_t simd_width = 8; /* 256-bit = 8 floats */
+    const size_t simd_width = 8;
+    const size_t unroll = 4;
+    const size_t block = simd_width * unroll;
     size_t i = 0;
 
-    __m256 sum_vec = _mm256_setzero_ps();
+    __m256 sum0 = _mm256_setzero_ps();
+    __m256 sum1 = _mm256_setzero_ps();
+    __m256 sum2 = _mm256_setzero_ps();
+    __m256 sum3 = _mm256_setzero_ps();
 
-    for (; i + simd_width <= n; i += simd_width) {
-        __m256 a_vec = _mm256_loadu_ps(a + i);
-        __m256 b_vec = _mm256_loadu_ps(b + i);
-        __m256 prod = _mm256_mul_ps(a_vec, b_vec);
-        sum_vec = _mm256_add_ps(sum_vec, prod);
+    for (; i + block <= n; i += block) {
+        _mm_prefetch((const char*)(a + i + 32), _MM_HINT_T0);
+        _mm_prefetch((const char*)(b + i + 32), _MM_HINT_T0);
+        __m256 a0 = _mm256_loadu_ps(a + i);
+        __m256 b0 = _mm256_loadu_ps(b + i);
+        __m256 a1 = _mm256_loadu_ps(a + i + 8);
+        __m256 b1 = _mm256_loadu_ps(b + i + 8);
+        __m256 a2 = _mm256_loadu_ps(a + i + 16);
+        __m256 b2 = _mm256_loadu_ps(b + i + 16);
+        __m256 a3 = _mm256_loadu_ps(a + i + 24);
+        __m256 b3 = _mm256_loadu_ps(b + i + 24);
+        sum0 = _mm256_fmadd_ps(a0, b0, sum0);
+        sum1 = _mm256_fmadd_ps(a1, b1, sum1);
+        sum2 = _mm256_fmadd_ps(a2, b2, sum2);
+        sum3 = _mm256_fmadd_ps(a3, b3, sum3);
     }
 
-    /* Horizontal sum of the 8 lanes */
-    __m128 sum_hi = _mm256_extractf128_ps(sum_vec, 1);
-    __m128 sum_lo = _mm256_castps256_ps128(sum_vec);
-    __m128 sum = _mm_add_ps(sum_hi, sum_lo);
+    /* Reduce 4 accumulators */
+    sum0 = _mm256_add_ps(sum0, sum1);
+    sum2 = _mm256_add_ps(sum2, sum3);
+    sum0 = _mm256_add_ps(sum0, sum2);
+    __m128 hi = _mm256_extractf128_ps(sum0, 1);
+    __m128 lo = _mm256_castps256_ps128(sum0);
+    __m128 sum = _mm_add_ps(hi, lo);
     sum = _mm_hadd_ps(sum, sum);
     sum = _mm_hadd_ps(sum, sum);
     float sum_scalar = _mm_cvtss_f32(sum);
 
-    /* Tail */
     for (; i < n; i++) {
         sum_scalar += a[i] * b[i];
     }
@@ -43,27 +61,38 @@ float vek_dot_f32_avx2(const float *a, const float *b, size_t n)
 float vek_l2sq_f32_avx2(const float *a, const float *b, size_t n)
 {
     const size_t simd_width = 8;
+    const size_t unroll = 4;
+    const size_t block = simd_width * unroll;
     size_t i = 0;
 
-    __m256 sum_vec = _mm256_setzero_ps();
+    __m256 sum0 = _mm256_setzero_ps();
+    __m256 sum1 = _mm256_setzero_ps();
+    __m256 sum2 = _mm256_setzero_ps();
+    __m256 sum3 = _mm256_setzero_ps();
 
-    for (; i + simd_width <= n; i += simd_width) {
-        __m256 a_vec = _mm256_loadu_ps(a + i);
-        __m256 b_vec = _mm256_loadu_ps(b + i);
-        __m256 diff = _mm256_sub_ps(a_vec, b_vec);
-        __m256 sq = _mm256_mul_ps(diff, diff);
-        sum_vec = _mm256_add_ps(sum_vec, sq);
+    for (; i + block <= n; i += block) {
+        _mm_prefetch((const char*)(a + i + 32), _MM_HINT_T0);
+        _mm_prefetch((const char*)(b + i + 32), _MM_HINT_T0);
+        __m256 d0 = _mm256_sub_ps(_mm256_loadu_ps(a + i), _mm256_loadu_ps(b + i));
+        __m256 d1 = _mm256_sub_ps(_mm256_loadu_ps(a + i + 8), _mm256_loadu_ps(b + i + 8));
+        __m256 d2 = _mm256_sub_ps(_mm256_loadu_ps(a + i + 16), _mm256_loadu_ps(b + i + 16));
+        __m256 d3 = _mm256_sub_ps(_mm256_loadu_ps(a + i + 24), _mm256_loadu_ps(b + i + 24));
+        sum0 = _mm256_fmadd_ps(d0, d0, sum0);
+        sum1 = _mm256_fmadd_ps(d1, d1, sum1);
+        sum2 = _mm256_fmadd_ps(d2, d2, sum2);
+        sum3 = _mm256_fmadd_ps(d3, d3, sum3);
     }
 
-    /* Horizontal sum */
-    __m128 sum_hi = _mm256_extractf128_ps(sum_vec, 1);
-    __m128 sum_lo = _mm256_castps256_ps128(sum_vec);
-    __m128 sum = _mm_add_ps(sum_hi, sum_lo);
+    sum0 = _mm256_add_ps(sum0, sum1);
+    sum2 = _mm256_add_ps(sum2, sum3);
+    sum0 = _mm256_add_ps(sum0, sum2);
+    __m128 hi = _mm256_extractf128_ps(sum0, 1);
+    __m128 lo = _mm256_castps256_ps128(sum0);
+    __m128 sum = _mm_add_ps(hi, lo);
     sum = _mm_hadd_ps(sum, sum);
     sum = _mm_hadd_ps(sum, sum);
     float sum_scalar = _mm_cvtss_f32(sum);
 
-    /* Tail */
     for (; i < n; i++) {
         float diff = a[i] - b[i];
         sum_scalar += diff * diff;
@@ -75,62 +104,67 @@ float vek_l2sq_f32_avx2(const float *a, const float *b, size_t n)
 float vek_cosine_f32_avx2(const float *a, const float *b, size_t n)
 {
     const size_t simd_width = 8;
+    const size_t unroll = 4;
+    const size_t block = simd_width * unroll;
     size_t i = 0;
 
-    __m256 dot_vec = _mm256_setzero_ps();
-    __m256 norm_a_vec = _mm256_setzero_ps();
-    __m256 norm_b_vec = _mm256_setzero_ps();
+    __m256 dot0 = _mm256_setzero_ps(), dot1 = _mm256_setzero_ps();
+    __m256 dot2 = _mm256_setzero_ps(), dot3 = _mm256_setzero_ps();
+    __m256 na0 = _mm256_setzero_ps(), na1 = _mm256_setzero_ps();
+    __m256 na2 = _mm256_setzero_ps(), na3 = _mm256_setzero_ps();
+    __m256 nb0 = _mm256_setzero_ps(), nb1 = _mm256_setzero_ps();
+    __m256 nb2 = _mm256_setzero_ps(), nb3 = _mm256_setzero_ps();
 
-    for (; i + simd_width <= n; i += simd_width) {
-        __m256 a_vec = _mm256_loadu_ps(a + i);
-        __m256 b_vec = _mm256_loadu_ps(b + i);
-
-        dot_vec = _mm256_fmadd_ps(a_vec, b_vec, dot_vec);
-        norm_a_vec = _mm256_fmadd_ps(a_vec, a_vec, norm_a_vec);
-        norm_b_vec = _mm256_fmadd_ps(b_vec, b_vec, norm_b_vec);
+    for (; i + block <= n; i += block) {
+        _mm_prefetch((const char*)(a + i + 32), _MM_HINT_T0);
+        _mm_prefetch((const char*)(b + i + 32), _MM_HINT_T0);
+        __m256 a0 = _mm256_loadu_ps(a + i);
+        __m256 b0 = _mm256_loadu_ps(b + i);
+        __m256 a1 = _mm256_loadu_ps(a + i + 8);
+        __m256 b1 = _mm256_loadu_ps(b + i + 8);
+        __m256 a2 = _mm256_loadu_ps(a + i + 16);
+        __m256 b2 = _mm256_loadu_ps(b + i + 16);
+        __m256 a3 = _mm256_loadu_ps(a + i + 24);
+        __m256 b3 = _mm256_loadu_ps(b + i + 24);
+        dot0 = _mm256_fmadd_ps(a0, b0, dot0);
+        dot1 = _mm256_fmadd_ps(a1, b1, dot1);
+        dot2 = _mm256_fmadd_ps(a2, b2, dot2);
+        dot3 = _mm256_fmadd_ps(a3, b3, dot3);
+        na0 = _mm256_fmadd_ps(a0, a0, na0);
+        na1 = _mm256_fmadd_ps(a1, a1, na1);
+        na2 = _mm256_fmadd_ps(a2, a2, na2);
+        na3 = _mm256_fmadd_ps(a3, a3, na3);
+        nb0 = _mm256_fmadd_ps(b0, b0, nb0);
+        nb1 = _mm256_fmadd_ps(b1, b1, nb1);
+        nb2 = _mm256_fmadd_ps(b2, b2, nb2);
+        nb3 = _mm256_fmadd_ps(b3, b3, nb3);
     }
 
-    /* Horizontal sum for dot */
-    __m128 dot_hi = _mm256_extractf128_ps(dot_vec, 1);
-    __m128 dot_lo = _mm256_castps256_ps128(dot_vec);
-    __m128 dot = _mm_add_ps(dot_hi, dot_lo);
-    dot = _mm_hadd_ps(dot, dot);
-    dot = _mm_hadd_ps(dot, dot);
-    float dot_scalar = _mm_cvtss_f32(dot);
+    dot0 = _mm256_add_ps(_mm256_add_ps(dot0, dot1), _mm256_add_ps(dot2, dot3));
+    na0 = _mm256_add_ps(_mm256_add_ps(na0, na1), _mm256_add_ps(na2, na3));
+    nb0 = _mm256_add_ps(_mm256_add_ps(nb0, nb1), _mm256_add_ps(nb2, nb3));
 
-    /* Horizontal sum for norm_a */
-    __m128 na_hi = _mm256_extractf128_ps(norm_a_vec, 1);
-    __m128 na_lo = _mm256_castps256_ps128(norm_a_vec);
-    __m128 na = _mm_add_ps(na_hi, na_lo);
-    na = _mm_hadd_ps(na, na);
-    na = _mm_hadd_ps(na, na);
-    float norm_a_scalar = _mm_cvtss_f32(na);
+    /* Horizontal reduce */
+    __m128 hi, lo, s;
+    hi = _mm256_extractf128_ps(dot0, 1); lo = _mm256_castps256_ps128(dot0);
+    s = _mm_add_ps(hi, lo); s = _mm_hadd_ps(s, s); s = _mm_hadd_ps(s, s);
+    float dot_scalar = _mm_cvtss_f32(s);
+    hi = _mm256_extractf128_ps(na0, 1); lo = _mm256_castps256_ps128(na0);
+    s = _mm_add_ps(hi, lo); s = _mm_hadd_ps(s, s); s = _mm_hadd_ps(s, s);
+    float norm_a_scalar = _mm_cvtss_f32(s);
+    hi = _mm256_extractf128_ps(nb0, 1); lo = _mm256_castps256_ps128(nb0);
+    s = _mm_add_ps(hi, lo); s = _mm_hadd_ps(s, s); s = _mm_hadd_ps(s, s);
+    float norm_b_scalar = _mm_cvtss_f32(s);
 
-    /* Horizontal sum for norm_b */
-    __m128 nb_hi = _mm256_extractf128_ps(norm_b_vec, 1);
-    __m128 nb_lo = _mm256_castps256_ps128(norm_b_vec);
-    __m128 nb = _mm_add_ps(nb_hi, nb_lo);
-    nb = _mm_hadd_ps(nb, nb);
-    nb = _mm_hadd_ps(nb, nb);
-    float norm_b_scalar = _mm_cvtss_f32(nb);
-
-    /* Tail */
     for (; i < n; i++) {
-        float ai = a[i];
-        float bi = b[i];
+        float ai = a[i], bi = b[i];
         dot_scalar += ai * bi;
         norm_a_scalar += ai * ai;
         norm_b_scalar += bi * bi;
     }
 
-    float norm_a_sqrt = sqrtf(norm_a_scalar);
-    float norm_b_sqrt = sqrtf(norm_b_scalar);
-
-    if (norm_a_sqrt == 0.0f || norm_b_sqrt == 0.0f) {
-        return 0.0f;
-    }
-
-    return dot_scalar / (norm_a_sqrt * norm_b_sqrt);
+    float denom = sqrtf(norm_a_scalar) * sqrtf(norm_b_scalar);
+    return denom == 0.0f ? 0.0f : dot_scalar / denom;
 }
 
 /* ===== Quantized int8/uint8 variants (AVX2) ===== */

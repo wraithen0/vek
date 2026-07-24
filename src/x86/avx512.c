@@ -11,24 +11,51 @@
 #include "vek.h"
 #include "../internal.h"
 
-/* AVX-512 dot product: sum(a[i] * b[i]) */
+/* AVX-512 dot product: sum(a[i] * b[i])
+ * 4 accumulators + 4x unroll to hide FMA latency (5 cycles, 2 units/cycle)
+ * Processes 64 floats (256 bytes) per iteration */
 float vek_dot_f32_avx512(const float *a, const float *b, size_t n)
 {
-    const size_t simd_width = 16; /* 512-bit = 16 floats */
+    const size_t simd_width = 16;
+    const size_t unroll = 4;
+    const size_t block = simd_width * unroll; /* 64 floats */
     size_t i = 0;
 
-    __m512 sum_vec = _mm512_setzero_ps();
+    __m512 sum0 = _mm512_setzero_ps();
+    __m512 sum1 = _mm512_setzero_ps();
+    __m512 sum2 = _mm512_setzero_ps();
+    __m512 sum3 = _mm512_setzero_ps();
 
+    for (; i + block <= n; i += block) {
+        _mm_prefetch((const char*)(a + i + 64), _MM_HINT_T0);
+        _mm_prefetch((const char*)(b + i + 64), _MM_HINT_T0);
+        __m512 a0 = _mm512_loadu_ps(a + i);
+        __m512 b0 = _mm512_loadu_ps(b + i);
+        __m512 a1 = _mm512_loadu_ps(a + i + 16);
+        __m512 b1 = _mm512_loadu_ps(b + i + 16);
+        __m512 a2 = _mm512_loadu_ps(a + i + 32);
+        __m512 b2 = _mm512_loadu_ps(b + i + 32);
+        __m512 a3 = _mm512_loadu_ps(a + i + 48);
+        __m512 b3 = _mm512_loadu_ps(b + i + 48);
+        sum0 = _mm512_fmadd_ps(a0, b0, sum0);
+        sum1 = _mm512_fmadd_ps(a1, b1, sum1);
+        sum2 = _mm512_fmadd_ps(a2, b2, sum2);
+        sum3 = _mm512_fmadd_ps(a3, b3, sum3);
+    }
+
+    /* Reduce 4 accumulators */
+    sum0 = _mm512_add_ps(sum0, sum1);
+    sum2 = _mm512_add_ps(sum2, sum3);
+    sum0 = _mm512_add_ps(sum0, sum2);
+    float sum_scalar = _mm512_reduce_add_ps(sum0);
+
+    /* Handle remaining elements */
     for (; i + simd_width <= n; i += simd_width) {
         __m512 a_vec = _mm512_loadu_ps(a + i);
         __m512 b_vec = _mm512_loadu_ps(b + i);
-        sum_vec = _mm512_fmadd_ps(a_vec, b_vec, sum_vec);
+        sum_scalar += _mm512_reduce_add_ps(_mm512_mul_ps(a_vec, b_vec));
     }
 
-    /* Horizontal sum of 16 lanes */
-    float sum_scalar = _mm512_reduce_add_ps(sum_vec);
-
-    /* Tail */
     for (; i < n; i++) {
         sum_scalar += a[i] * b[i];
     }
@@ -40,21 +67,38 @@ float vek_dot_f32_avx512(const float *a, const float *b, size_t n)
 float vek_l2sq_f32_avx512(const float *a, const float *b, size_t n)
 {
     const size_t simd_width = 16;
+    const size_t unroll = 4;
+    const size_t block = simd_width * unroll;
     size_t i = 0;
 
-    __m512 sum_vec = _mm512_setzero_ps();
+    __m512 sum0 = _mm512_setzero_ps();
+    __m512 sum1 = _mm512_setzero_ps();
+    __m512 sum2 = _mm512_setzero_ps();
+    __m512 sum3 = _mm512_setzero_ps();
 
-    for (; i + simd_width <= n; i += simd_width) {
-        __m512 a_vec = _mm512_loadu_ps(a + i);
-        __m512 b_vec = _mm512_loadu_ps(b + i);
-        __m512 diff = _mm512_sub_ps(a_vec, b_vec);
-        sum_vec = _mm512_fmadd_ps(diff, diff, sum_vec);
+    for (; i + block <= n; i += block) {
+        _mm_prefetch((const char*)(a + i + 64), _MM_HINT_T0);
+        _mm_prefetch((const char*)(b + i + 64), _MM_HINT_T0);
+        __m512 d0 = _mm512_sub_ps(_mm512_loadu_ps(a + i), _mm512_loadu_ps(b + i));
+        __m512 d1 = _mm512_sub_ps(_mm512_loadu_ps(a + i + 16), _mm512_loadu_ps(b + i + 16));
+        __m512 d2 = _mm512_sub_ps(_mm512_loadu_ps(a + i + 32), _mm512_loadu_ps(b + i + 32));
+        __m512 d3 = _mm512_sub_ps(_mm512_loadu_ps(a + i + 48), _mm512_loadu_ps(b + i + 48));
+        sum0 = _mm512_fmadd_ps(d0, d0, sum0);
+        sum1 = _mm512_fmadd_ps(d1, d1, sum1);
+        sum2 = _mm512_fmadd_ps(d2, d2, sum2);
+        sum3 = _mm512_fmadd_ps(d3, d3, sum3);
     }
 
-    /* Horizontal sum */
-    float sum_scalar = _mm512_reduce_add_ps(sum_vec);
+    sum0 = _mm512_add_ps(sum0, sum1);
+    sum2 = _mm512_add_ps(sum2, sum3);
+    sum0 = _mm512_add_ps(sum0, sum2);
+    float sum_scalar = _mm512_reduce_add_ps(sum0);
 
-    /* Tail */
+    for (; i + simd_width <= n; i += simd_width) {
+        __m512 diff = _mm512_sub_ps(_mm512_loadu_ps(a + i), _mm512_loadu_ps(b + i));
+        sum_scalar += _mm512_reduce_add_ps(_mm512_mul_ps(diff, diff));
+    }
+
     for (; i < n; i++) {
         float diff = a[i] - b[i];
         sum_scalar += diff * diff;
@@ -67,43 +111,66 @@ float vek_l2sq_f32_avx512(const float *a, const float *b, size_t n)
 float vek_cosine_f32_avx512(const float *a, const float *b, size_t n)
 {
     const size_t simd_width = 16;
+    const size_t unroll = 4;
+    const size_t block = simd_width * unroll;
     size_t i = 0;
 
-    __m512 dot_vec = _mm512_setzero_ps();
-    __m512 norm_a_vec = _mm512_setzero_ps();
-    __m512 norm_b_vec = _mm512_setzero_ps();
+    __m512 dot0 = _mm512_setzero_ps(), dot1 = _mm512_setzero_ps();
+    __m512 dot2 = _mm512_setzero_ps(), dot3 = _mm512_setzero_ps();
+    __m512 na0 = _mm512_setzero_ps(), na1 = _mm512_setzero_ps();
+    __m512 na2 = _mm512_setzero_ps(), na3 = _mm512_setzero_ps();
+    __m512 nb0 = _mm512_setzero_ps(), nb1 = _mm512_setzero_ps();
+    __m512 nb2 = _mm512_setzero_ps(), nb3 = _mm512_setzero_ps();
 
-    for (; i + simd_width <= n; i += simd_width) {
-        __m512 a_vec = _mm512_loadu_ps(a + i);
-        __m512 b_vec = _mm512_loadu_ps(b + i);
-
-        dot_vec = _mm512_fmadd_ps(a_vec, b_vec, dot_vec);
-        norm_a_vec = _mm512_fmadd_ps(a_vec, a_vec, norm_a_vec);
-        norm_b_vec = _mm512_fmadd_ps(b_vec, b_vec, norm_b_vec);
+    for (; i + block <= n; i += block) {
+        _mm_prefetch((const char*)(a + i + 64), _MM_HINT_T0);
+        _mm_prefetch((const char*)(b + i + 64), _MM_HINT_T0);
+        __m512 a0 = _mm512_loadu_ps(a + i);
+        __m512 b0 = _mm512_loadu_ps(b + i);
+        __m512 a1 = _mm512_loadu_ps(a + i + 16);
+        __m512 b1 = _mm512_loadu_ps(b + i + 16);
+        __m512 a2 = _mm512_loadu_ps(a + i + 32);
+        __m512 b2 = _mm512_loadu_ps(b + i + 32);
+        __m512 a3 = _mm512_loadu_ps(a + i + 48);
+        __m512 b3 = _mm512_loadu_ps(b + i + 48);
+        dot0 = _mm512_fmadd_ps(a0, b0, dot0);
+        dot1 = _mm512_fmadd_ps(a1, b1, dot1);
+        dot2 = _mm512_fmadd_ps(a2, b2, dot2);
+        dot3 = _mm512_fmadd_ps(a3, b3, dot3);
+        na0 = _mm512_fmadd_ps(a0, a0, na0);
+        na1 = _mm512_fmadd_ps(a1, a1, na1);
+        na2 = _mm512_fmadd_ps(a2, a2, na2);
+        na3 = _mm512_fmadd_ps(a3, a3, na3);
+        nb0 = _mm512_fmadd_ps(b0, b0, nb0);
+        nb1 = _mm512_fmadd_ps(b1, b1, nb1);
+        nb2 = _mm512_fmadd_ps(b2, b2, nb2);
+        nb3 = _mm512_fmadd_ps(b3, b3, nb3);
     }
 
-    /* Horizontal sums */
-    float dot_scalar = _mm512_reduce_add_ps(dot_vec);
-    float norm_a_scalar = _mm512_reduce_add_ps(norm_a_vec);
-    float norm_b_scalar = _mm512_reduce_add_ps(norm_b_vec);
+    dot0 = _mm512_add_ps(_mm512_add_ps(dot0, dot1), _mm512_add_ps(dot2, dot3));
+    na0 = _mm512_add_ps(_mm512_add_ps(na0, na1), _mm512_add_ps(na2, na3));
+    nb0 = _mm512_add_ps(_mm512_add_ps(nb0, nb1), _mm512_add_ps(nb2, nb3));
+    float dot_scalar = _mm512_reduce_add_ps(dot0);
+    float norm_a_scalar = _mm512_reduce_add_ps(na0);
+    float norm_b_scalar = _mm512_reduce_add_ps(nb0);
 
-    /* Tail */
+    for (; i + simd_width <= n; i += simd_width) {
+        __m512 av = _mm512_loadu_ps(a + i);
+        __m512 bv = _mm512_loadu_ps(b + i);
+        dot_scalar += _mm512_reduce_add_ps(_mm512_mul_ps(av, bv));
+        norm_a_scalar += _mm512_reduce_add_ps(_mm512_mul_ps(av, av));
+        norm_b_scalar += _mm512_reduce_add_ps(_mm512_mul_ps(bv, bv));
+    }
+
     for (; i < n; i++) {
-        float ai = a[i];
-        float bi = b[i];
+        float ai = a[i], bi = b[i];
         dot_scalar += ai * bi;
         norm_a_scalar += ai * ai;
         norm_b_scalar += bi * bi;
     }
 
-    float norm_a_sqrt = sqrtf(norm_a_scalar);
-    float norm_b_sqrt = sqrtf(norm_b_scalar);
-
-    if (norm_a_sqrt == 0.0f || norm_b_sqrt == 0.0f) {
-        return 0.0f;
-    }
-
-    return dot_scalar / (norm_a_sqrt * norm_b_sqrt);
+    float denom = sqrtf(norm_a_scalar) * sqrtf(norm_b_scalar);
+    return denom == 0.0f ? 0.0f : dot_scalar / denom;
 }
 
 /* ===== Quantized int8/uint8 variants (AVX-512 with VNNI) ===== */
