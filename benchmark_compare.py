@@ -131,6 +131,7 @@ def _vek_cos(a, b, n):
     b_ptr = b.ctypes.data_as(POINTER(c_float))
     return libvek.vek_cosine_f32(a_ptr, b_ptr, n)
 
+
 # --- faiss wrappers ---
 def _faiss_dot_setup(a, b, n):
     idx = faiss.IndexFlatIP(n)
@@ -171,13 +172,13 @@ def _usearch_setup(a, b, n, metric):
     idx.add(1, b)
     return idx
 
-def _usearch_dot_run(idx, a, b, n):
-    return -idx.pairwise_distance(0, 1)
+def _usearch_dot_run(idx):
+    return 1.0 - idx.pairwise_distance(0, 1)
 
-def _usearch_l2_run(idx, a, b, n):
+def _usearch_l2_run(idx):
     return idx.pairwise_distance(0, 1)
 
-def _usearch_cos_run(idx, a, b, n):
+def _usearch_cos_run(idx):
     return 1.0 - idx.pairwise_distance(0, 1)
 
 
@@ -194,24 +195,25 @@ if __name__ == "__main__":
     print(f"  simsimd:      {'available' if SIMSIMD_AVAILABLE else 'not found'}")
     print("=" * 106)
 
-    _ss_dot = getattr(simsimd, 'dot', None) if SIMSIMD_AVAILABLE else None
-    _ss_l2 = getattr(simsimd, 'l2', None) if SIMSIMD_AVAILABLE else None
-    _ss_cos = getattr(simsimd, 'cosine', None) if SIMSIMD_AVAILABLE else None
+# simsimd returns sqrt(L2) and 1-cos, wrap to match vek/faiss/usearch semantics
+_ss_dot = getattr(simsimd, 'dot', None) if SIMSIMD_AVAILABLE else None
+_ss_l2 = (lambda a, b: simsimd.l2(a, b) ** 2) if SIMSIMD_AVAILABLE else None
+_ss_cos = (lambda a, b: 1.0 - simsimd.cosine(a, b)) if SIMSIMD_AVAILABLE else None
 
-    run_bench("DOT PRODUCT",
-              _vek_dot,
-              _faiss_dot_setup, _faiss_dot_run,
-              lambda a, b, n: _usearch_setup(a, b, n, 'ip'), _usearch_dot_run,
-              _ss_dot)
+run_bench("DOT PRODUCT",
+          _vek_dot,
+          _faiss_dot_setup, _faiss_dot_run,
+          lambda a, b, n: _usearch_setup(a, b, n, 'ip'), _usearch_dot_run,
+          _ss_dot)
 
-    run_bench("L2 DISTANCE",
-              _vek_l2,
-              _faiss_l2_setup, _faiss_l2_run,
-              lambda a, b, n: _usearch_setup(a, b, n, 'l2sq'), _usearch_l2_run,
-              _ss_l2)
+run_bench("L2 DISTANCE",
+          _vek_l2,
+          _faiss_l2_setup, _faiss_l2_run,
+          lambda a, b, n: _usearch_setup(a, b, n, 'l2sq'), _usearch_l2_run,
+          _ss_l2)
 
-    run_bench("COSINE SIMILARITY",
-              _vek_cos,
-              _faiss_cos_setup, _faiss_cos_run,
-              lambda a, b, n: _usearch_setup(a, b, n, 'cos'), _usearch_cos_run,
-              _ss_cos)
+run_bench("COSINE SIMILARITY",
+          _vek_cos,
+          _faiss_cos_setup, _faiss_cos_run,
+          lambda a, b, n: _usearch_setup(a, b, n, 'cos'), _usearch_cos_run,
+          _ss_cos)
