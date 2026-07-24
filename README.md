@@ -68,7 +68,7 @@ int main() {
 # Library, tests, and benchmarks
 make
 
-# Run correctness suite (291 assertions across all backends)
+# Run correctness suite
 make test
 
 # Microbenchmarks
@@ -111,6 +111,7 @@ float    vek_cosine_u8(const uint8_t *a, const uint8_t *b, size_t n);
 
 > **Note:** int8/uint8 dot products return 32-bit. For max-magnitude inputs (all 127 or all 255), the dot overflows the return type at ~133K int8 or ~66K uint8 elements. Cosine remains correct for uint8 at any n. For int8 cosine, overflow in the dot accumulator affects the result above the same threshold. Embedding vectors (128–4096 dims) never approach these limits.
 
+```c
 // --- 1-bit (binary) ---
 int32_t vek_dot_b1(const uint64_t *a, const uint64_t *b, size_t n);
 int32_t vek_hamming_b1(const uint64_t *a, const uint64_t *b, size_t n);
