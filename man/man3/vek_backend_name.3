@@ -1,0 +1,44 @@
+.\" Man page for vek_backend_name (section 3)
+.\" Copyright (c) 2024 vek contributors
+.\"
+.TH VEK_BACKEND_NAME 3 "2024-01-01" "vek 0.8.0" "Library Functions Manual"
+.SH NAME
+vek_backend_name \- get the name of the active SIMD backend
+.SH SYNOPSIS
+.nf
+.B #include <vek.h>
+.sp
+.BI "const char* vek_backend_name(void);"
+.fi
+.SH DESCRIPTION
+.BR vek_backend_name ()
+returns the name of the SIMD backend currently in use.
+.PP
+The backend is selected once at first API call (or explicitly via
+.BR vek_init (3))
+based on detected CPU features.
+.SH RETURN VALUE
+Returns a pointer to one of the following static strings:
+.TP
+.B "scalar"
+Pure C reference implementation (always available).
+.TP
+.B "sse2"
+SSE2 intrinsics (x86_64 baseline).
+.TP
+.B "avx2"
+AVX2 + FMA3 intrinsics.
+.TP
+.B "avx512"
+AVX-512F + VNNI + VPOPCNTDQ intrinsics.
+.TP
+.B "neon"
+ARM64 NEON intrinsics.
+.PP
+The returned pointer is to a static string and must not be freed.
+.SH EXAMPLES
+.nf
+printf("Using: %s\\n", vek_backend_name());  // e.g. "avx512"
+.fi
+.SH SEE ALSO
+.BR vek_init (3)

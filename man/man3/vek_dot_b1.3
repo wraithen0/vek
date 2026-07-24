@@ -1,0 +1,50 @@
+.\" Man page for vek_dot_b1 (section 3)
+.\" Copyright (c) 2024 vek contributors
+.\"
+.TH VEK_DOT_B1 3 "2024-01-01" "vek 0.8.0" "Library Functions Manual"
+.SH NAME
+vek_dot_b1 \- binary dot product (popcount of AND)
+.SH SYNOPSIS
+.nf
+.B #include <vek.h>
+.sp
+.BI "size_t vek_dot_b1(const uint8_t *" a ", const uint8_t *" b ", size_t " n ");"
+.fi
+.SH DESCRIPTION
+.BR vek_dot_b1 ()
+computes the dot product of two binary vectors packed into uint8 arrays.
+This is equivalent to the population count (popcount) of the bitwise AND
+of corresponding bytes:
+.PP
+.RS
+result = popcount(a[i] & b[i]) for i = 0 to n-1
+.RE
+.PP
+Each bit in the input vectors represents a binary value (0 or 1).
+.SH PARAMETERS
+.TP
+.I a
+First input binary vector packed into uint8 bytes. Must have at least
+.I n
+elements.
+.TP
+.I b
+Second input binary vector packed into uint8 bytes. Must have at least
+.I n
+elements.
+.TP
+.I n
+Number of uint8 elements (not bits). Must be greater than 0.
+.SH RETURN VALUE
+Returns the number of matching set bits as a
+.BR size_t .
+.SH EXAMPLES
+.nf
+uint8_t a[] = {0xFF, 0x0F};  // 11111111 00001111
+uint8_t b[] = {0x0F, 0xFF};  // 00001111 11111111
+size_t result = vek_dot_b1(a, b, 2);  // 12 (8 + 4)
+.fi
+.SH SEE ALSO
+.BR vek_hamming_b1 (3),
+.BR vek_cosine_b1 (3),
+.BR vek_dot_u8 (3)

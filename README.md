@@ -187,21 +187,54 @@ The C extension is 2x faster than ctypes and competitive with simsimd:
 ### Cross-Library Comparison (f32, ns/iter)
 
 | Size | **Dot** vek | faiss | usearch | simsimd | **L2** vek | faiss | usearch | simsimd | **Cosine** vek | faiss | usearch | simsimd |
-|------|------------|-------|---------|---------|------------|-------|---------|---------|---------------|-------|---------|---------|
-| 32   | **189** | 5691 | 1399 | 385 | **200** | 5708 | 1391 | 444 | **608** | 15924 | 3620 | 1151 |
-| 64   | **219** | 6043 | 1417 | 345 | **191** | 5853 | 1337 | 519 | **486** | 17648 | 4031 | 1223 |
-| 128  | **221** | 5892 | 1544 | 324 | **307** | 10555 | 3150 | 1035 | **537** | 15836 | 3595 | 1368 |
-| 256  | **250** | 5578 | 1366 | 340 | **427** | 14445 | 3280 | 1123 | **760** | 15822 | 3757 | 1269 |
-| 512  | **189** | 5958 | 1543 | 351 | **520** | 15020 | 3989 | 1651 | **577** | 16672 | 3844 | 1196 |
-| 1024 | **218** | 5665 | 1506 | 386 | **849** | 16430 | 4509 | 1260 | **733** | 16881 | 4622 | 1491 |
-| 2048 | **285** | 5987 | 1705 | 504 | **750** | 16879 | 5115 | 2002 | **1056** | 16408 | 5041 | 2108 |
-| 4096 | **465** | 6363 | 2397 | 688 | **1052** | 16844 | 6555 | 3183 | **1205** | 18923 | 6695 | 2796 |
-| 8192 | **1175** | 6368 | 3044 | 1477 | 3539 | 20899 | 9883 | **4606** | **4052** | 18618 | 10109 | 5011 |
+| ---- | ----------- | ----- | ------- | ------- | ---------- | ----- | ------- | ------- | -------------- | ----- | ------- | ------- |
+| 32   | **189**     | 5691  | 1399    | 385     | **200**    | 5708  | 1391    | 444     | **608**        | 15924 | 3620    | 1151    |
+| 64   | **219**     | 6043  | 1417    | 345     | **191**    | 5853  | 1337    | 519     | **486**        | 17648 | 4031    | 1223    |
+| 128  | **221**     | 5892  | 1544    | 324     | **307**    | 10555 | 3150    | 1035    | **537**        | 15836 | 3595    | 1368    |
+| 256  | **250**     | 5578  | 1366    | 340     | **427**    | 14445 | 3280    | 1123    | **760**        | 15822 | 3757    | 1269    |
+| 512  | **189**     | 5958  | 1543    | 351     | **520**    | 15020 | 3989    | 1651    | **577**        | 16672 | 3844    | 1196    |
+| 1024 | **218**     | 5665  | 1506    | 386     | **849**    | 16430 | 4509    | 1260    | **733**        | 16881 | 4622    | 1491    |
+| 2048 | **285**     | 5987  | 1705    | 504     | **750**    | 16879 | 5115    | 2002    | **1056**       | 16408 | 5041    | 2108    |
+| 4096 | **465**     | 6363  | 2397    | 688     | **1052**   | 16844 | 6555    | 3183    | **1205**       | 18923 | 6695    | 2796    |
+| 8192 | **1175**    | 6368  | 3044    | 1477    | **3539**   | 20899 | 9883    | 4606    | **4052**       | 18618 | 10109   | 5011    |
 
 **Notes (ns/iter, lower is better, **bold** = fastest):**
 - vek uses the Python C extension for zero-overhead calls
 - vek is fastest on dot/L2 at small sizes; simsimd edges ahead at 4096+ on L2/cosine
 - Benchmarks run with AVX-512F/VNNI/VPOPCNTDQ enabled
+
+## API Stability
+
+vek follows [Semantic Versioning](https://semver.org/):
+
+- **v1.0** — Stable API. All public functions in `include/vek.h` are guaranteed backward-compatible.
+- **Patch releases** (1.0.x) — Bug fixes only, no API changes.
+- **Minor releases** (1.x.0) — New functions may be added, existing ones unchanged.
+- **Major releases** (x.0.0) — Breaking changes (deprecated functions removed).
+
+### What's Stable (v1.0)
+
+| Category | Functions | Status |
+|----------|-----------|--------|
+| Initialization | `vek_init`, `vek_backend_name` | Stable |
+| f32 operations | `vek_dot_f32`, `vek_l2sq_f32`, `vek_cosine_f32` | Stable |
+| int8 operations | `vek_dot_i8`, `vek_l2sq_i8`, `vek_cosine_i8` | Stable |
+| uint8 operations | `vek_dot_u8`, `vek_l2sq_u8`, `vek_cosine_u8` | Stable |
+| Binary (1-bit) | `vek_dot_b1`, `vek_hamming_b1`, `vek_cosine_b1` | Stable |
+
+### What's Unstable (may change)
+
+| Category | Functions | Status |
+|----------|-----------|--------|
+| Scalar references | `vek_*_scalar` | Internal/testing only |
+| Backend detection | `vek_backend_name` return values | May add new backends |
+
+### ABI Stability
+
+- **C ABI** — All public functions use `extern "C"` linkage.
+- **No opaque types** — Only scalar parameters and pointers.
+- **Thread-safe** — No global mutable state after initialization.
+- **No heap allocation** — All computation is stack-based.
 
 ## Roadmap
 
@@ -213,7 +246,47 @@ The C extension is 2x faster than ctypes and competitive with simsimd:
 - [x] v0.6 — Binary (1-bit) kernels (dot, Hamming, cosine) with AVX-512 VPOPCNTDQ
 - [x] v0.7 — CMake support, Doxygen, examples, benchmark comparisons
 - [x] v0.8 — Thread-safe atomic init, NEON b1 ops, b1 padding-bit masking, GCC 15 compat
-- [ ] v1.0 — Stable API, published benchmarks, full docs, man pages, package manager support
+- [x] v1.0 — Stable API, published benchmarks, full docs, man pages
+- [ ] v1.1 — Package manager support (PyPI, crates.io, npm)
+
+## Documentation
+
+### API Reference
+
+Full Doxygen documentation is available in `include/vek.h`. Generate HTML docs:
+
+```bash
+doxygen Doxyfile
+# Output in docs/html/index.html
+```
+
+### Man Pages
+
+Man pages are installed in `man/man3/`. View with:
+
+```bash
+man -l man/man3/vek_dot_f32.3
+```
+
+Or install system-wide:
+
+```bash
+make install-man
+```
+
+### Python API
+
+```python
+import numpy as np
+import _vek_cext as vek
+
+a = np.random.randn(1024).astype(np.float32)
+b = np.random.randn(1024).astype(np.float32)
+
+dot = vek.dot_f32(a, b)
+l2   = vek.l2sq_f32(a, b)
+cos  = vek.cosine_f32(a, b)
+```
 
 ## License
 

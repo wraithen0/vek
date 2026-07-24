@@ -1,0 +1,35 @@
+.\" Man page for vek_init (section 3)
+.\" Copyright (c) 2024 vek contributors
+.\"
+.TH VEK_INIT 3 "2024-01-01" "vek 0.8.0" "Library Functions Manual"
+.SH NAME
+vek_init \- initialize the vek library and detect CPU features
+.SH SYNOPSIS
+.nf
+.B #include <vek.h>
+.sp
+.BI "int vek_init(void);"
+.fi
+.SH DESCRIPTION
+.BR vek_init ()
+initializes the vek library and detects available CPU features (SSE2, AVX2,
+AVX-512, NEON) to select the optimal SIMD backend.
+.PP
+This function is optional — it is called automatically on the first API call
+via
+.BR pthread_once (3).
+Subsequent calls are no-ops.
+.PP
+The function is thread-safe. Multiple threads may call
+.BR vek_init ()
+concurrently without additional synchronization.
+.SH RETURN VALUE
+.BR vek_init ()
+returns 0 on success, non-zero on error.
+.SH NOTES
+After initialization,
+.BR vek_backend_name (3)
+returns the name of the selected backend.
+.SH SEE ALSO
+.BR vek_backend_name (3),
+.BR vek_dot_f32 (3)

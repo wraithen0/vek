@@ -1,0 +1,51 @@
+.\" Man page for vek_cosine_f32 (section 3)
+.\" Copyright (c) 2024 vek contributors
+.\"
+.TH VEK_COSINE_F32 3 "2024-01-01" "vek 0.8.0" "Library Functions Manual"
+.SH NAME
+vek_cosine_f32 \- cosine similarity between two f32 vectors
+.SH SYNOPSIS
+.nf
+.B #include <vek.h>
+.sp
+.BI "float vek_cosine_f32(const float *" a ", const float *" b ", size_t " n ");"
+.fi
+.SH DESCRIPTION
+.BR vek_cosine_f32 ()
+computes the cosine similarity between two single-precision floating-point
+vectors:
+.PP
+.RS
+result = dot(a, b) / (||a|| * ||b||)
+.RE
+.PP
+The result ranges from -1.0 (opposite) to 1.0 (identical), with 0.0
+indicating orthogonality. If either vector has zero magnitude, the result
+is undefined.
+.SH PARAMETERS
+.TP
+.I a
+First input vector. Must have at least
+.I n
+elements.
+.TP
+.I b
+Second input vector. Must have at least
+.I n
+elements.
+.TP
+.I n
+Number of elements. Must be greater than 0.
+.SH RETURN VALUE
+Returns the cosine similarity as a single-precision float in the range
+[-1.0, 1.0].
+.SH EXAMPLES
+.nf
+float a[] = {1.0f, 0.0f, 1.0f};
+float b[] = {1.0f, 1.0f, 0.0f};
+float result = vek_cosine_f32(a, b, 3);  // 0.5
+.fi
+.SH SEE ALSO
+.BR vek_dot_f32 (3),
+.BR vek_l2sq_f32 (3),
+.BR vek_cosine_i8 (3)

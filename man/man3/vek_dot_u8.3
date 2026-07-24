@@ -1,0 +1,47 @@
+.\" Man page for vek_dot_u8 (section 3)
+.\" Copyright (c) 2024 vek contributors
+.\"
+.TH VEK_DOT_U8 3 "2024-01-01" "vek 0.8.0" "Library Functions Manual"
+.SH NAME
+vek_dot_u8 \- dot product of two uint8 vectors
+.SH SYNOPSIS
+.nf
+.B #include <vek.h>
+.sp
+.BI "uint32_t vek_dot_u8(const uint8_t *" a ", const uint8_t *" b ", size_t " n ");"
+.fi
+.SH DESCRIPTION
+.BR vek_dot_u8 ()
+computes the dot product of two unsigned 8-bit integer vectors:
+.PP
+.RS
+result = sum(a[i] * b[i]) for i = 0 to n-1
+.RE
+.PP
+The result is accumulated in 32 bits to avoid overflow.
+.SH PARAMETERS
+.TP
+.I a
+First input vector. Must have at least
+.I n
+elements.
+.TP
+.I b
+Second input vector. Must have at least
+.I n
+elements.
+.TP
+.I n
+Number of elements. Must be greater than 0.
+.SH RETURN VALUE
+Returns the dot product as a 32-bit unsigned integer.
+.SH EXAMPLES
+.nf
+uint8_t a[] = {1, 2, 3};
+uint8_t b[] = {4, 5, 6};
+uint32_t result = vek_dot_u8(a, b, 3);  // 32
+.fi
+.SH SEE ALSO
+.BR vek_dot_i8 (3),
+.BR vek_dot_f32 (3),
+.BR vek_l2sq_u8 (3)

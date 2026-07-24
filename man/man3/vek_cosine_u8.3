@@ -1,0 +1,50 @@
+.\" Man page for vek_cosine_u8 (section 3)
+.\" Copyright (c) 2024 vek contributors
+.\"
+.TH VEK_COSINE_U8 3 "2024-01-01" "vek 0.8.0" "Library Functions Manual"
+.SH NAME
+vek_cosine_u8 \- cosine similarity between two uint8 vectors
+.SH SYNOPSIS
+.nf
+.B #include <vek.h>
+.sp
+.BI "float vek_cosine_u8(const uint8_t *" a ", const uint8_t *" b ", size_t " n ");"
+.fi
+.SH DESCRIPTION
+.BR vek_cosine_u8 ()
+computes the cosine similarity between two unsigned 8-bit integer vectors:
+.PP
+.RS
+result = dot(a, b) / (||a|| * ||b||)
+.RE
+.PP
+The result ranges from -1.0 (opposite) to 1.0 (identical), with 0.0
+indicating orthogonality. If either vector has zero magnitude, the result
+is undefined.
+.SH PARAMETERS
+.TP
+.I a
+First input vector. Must have at least
+.I n
+elements.
+.TP
+.I b
+Second input vector. Must have at least
+.I n
+elements.
+.TP
+.I n
+Number of elements. Must be greater than 0.
+.SH RETURN VALUE
+Returns the cosine similarity as a single-precision float in the range
+[-1.0, 1.0].
+.SH EXAMPLES
+.nf
+uint8_t a[] = {1, 0, 1};
+uint8_t b[] = {1, 1, 0};
+float result = vek_cosine_u8(a, b, 3);  // 0.5
+.fi
+.SH SEE ALSO
+.BR vek_cosine_f32 (3),
+.BR vek_dot_u8 (3),
+.BR vek_l2sq_u8 (3)

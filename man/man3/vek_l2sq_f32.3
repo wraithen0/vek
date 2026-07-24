@@ -1,0 +1,50 @@
+.\" Man page for vek_l2sq_f32 (section 3)
+.\" Copyright (c) 2024 vek contributors
+.\"
+.TH VEK_L2SQ_F32 3 "2024-01-01" "vek 0.8.0" "Library Functions Manual"
+.SH NAME
+vek_l2sq_f32 \- squared L2 distance between two f32 vectors
+.SH SYNOPSIS
+.nf
+.B #include <vek.h>
+.sp
+.BI "float vek_l2sq_f32(const float *" a ", const float *" b ", size_t " n ");"
+.fi
+.SH DESCRIPTION
+.BR vek_l2sq_f32 ()
+computes the squared Euclidean (L2) distance between two single-precision
+floating-point vectors:
+.PP
+.RS
+result = sum((a[i] - b[i])^2) for i = 0 to n-1
+.RE
+.PP
+This is the squared distance, which avoids the square root computation. Use
+.BR sqrt (3)
+to obtain the actual L2 distance if needed.
+.SH PARAMETERS
+.TP
+.I a
+First input vector. Must have at least
+.I n
+elements.
+.TP
+.I b
+Second input vector. Must have at least
+.I n
+elements.
+.TP
+.I n
+Number of elements. Must be greater than 0.
+.SH RETURN VALUE
+Returns the squared L2 distance as a single-precision float.
+.SH EXAMPLES
+.nf
+float a[] = {1.0f, 2.0f, 3.0f};
+float b[] = {4.0f, 5.0f, 6.0f};
+float result = vek_l2sq_f32(a, b, 3);  // 27.0
+.fi
+.SH SEE ALSO
+.BR vek_dot_f32 (3),
+.BR vek_cosine_f32 (3),
+.BR vek_l2sq_i8 (3)

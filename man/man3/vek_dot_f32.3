@@ -1,0 +1,48 @@
+.\" Man page for vek_dot_f32 (section 3)
+.\" Copyright (c) 2024 vek contributors
+.\"
+.TH VEK_DOT_F32 3 "2024-01-01" "vek 0.8.0" "Library Functions Manual"
+.SH NAME
+vek_dot_f32 \- dot product of two f32 vectors
+.SH SYNOPSIS
+.nf
+.B #include <vek.h>
+.sp
+.BI "float vek_dot_f32(const float *" a ", const float *" b ", size_t " n ");"
+.fi
+.SH DESCRIPTION
+.BR vek_dot_f32 ()
+computes the dot product of two single-precision floating-point vectors:
+.PP
+.RS
+result = sum(a[i] * b[i]) for i = 0 to n-1
+.RE
+.SH PARAMETERS
+.TP
+.I a
+First input vector. Must have at least
+.I n
+elements.
+.TP
+.I b
+Second input vector. Must have at least
+.I n
+elements.
+.TP
+.I n
+Number of elements. Must be greater than 0.
+.SH RETURN VALUE
+Returns the dot product as a single-precision float.
+.SH PERFORMANCE
+O(n) with SIMD vectorization. On AVX-512, processes 16 floats per iteration
+with 4 accumulators for instruction-level parallelism.
+.SH EXAMPLES
+.nf
+float a[] = {1.0f, 2.0f, 3.0f};
+float b[] = {4.0f, 5.0f, 6.0f};
+float result = vek_dot_f32(a, b, 3);  // 32.0
+.fi
+.SH SEE ALSO
+.BR vek_l2sq_f32 (3),
+.BR vek_cosine_f32 (3),
+.BR vek_dot_i8 (3)

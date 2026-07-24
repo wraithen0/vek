@@ -1,0 +1,50 @@
+.\" Man page for vek_l2sq_u8 (section 3)
+.\" Copyright (c) 2024 vek contributors
+.\"
+.TH VEK_L2SQ_U8 3 "2024-01-01" "vek 0.8.0" "Library Functions Manual"
+.SH NAME
+vek_l2sq_u8 \- squared L2 distance between two uint8 vectors
+.SH SYNOPSIS
+.nf
+.B #include <vek.h>
+.sp
+.BI "uint32_t vek_l2sq_u8(const uint8_t *" a ", const uint8_t *" b ", size_t " n ");"
+.fi
+.SH DESCRIPTION
+.BR vek_l2sq_u8 ()
+computes the squared Euclidean (L2) distance between two unsigned 8-bit
+integer vectors:
+.PP
+.RS
+result = sum((a[i] - b[i])^2) for i = 0 to n-1
+.RE
+.PP
+This is the squared distance, which avoids the square root computation. Use
+.BR sqrt (3)
+to obtain the actual L2 distance if needed.
+.SH PARAMETERS
+.TP
+.I a
+First input vector. Must have at least
+.I n
+elements.
+.TP
+.I b
+Second input vector. Must have at least
+.I n
+elements.
+.TP
+.I n
+Number of elements. Must be greater than 0.
+.SH RETURN VALUE
+Returns the squared L2 distance as a 32-bit unsigned integer.
+.SH EXAMPLES
+.nf
+uint8_t a[] = {1, 2, 3};
+uint8_t b[] = {4, 5, 6};
+uint32_t result = vek_l2sq_u8(a, b, 3);  // 27
+.fi
+.SH SEE ALSO
+.BR vek_l2sq_f32 (3),
+.BR vek_dot_u8 (3),
+.BR vek_cosine_u8 (3)
