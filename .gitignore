@@ -43,6 +43,9 @@ node_modules/
 .DS_Store
 Thumbs.db
 
+# Command Code (local AI assistant config)
+.commandcode/
+
 # Test coverage
 *.gcda
 *.gcno
