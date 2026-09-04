@@ -11,6 +11,9 @@
 #include <time.h>
 #include <math.h>
 #include <stdint.h>
+#ifdef __APPLE__
+#include <sys/sysctl.h>
+#endif
 #include "vek.h"
 
 #define WARMUP_ITERS 1000
@@ -24,9 +27,16 @@ static inline uint64_t ns_now(void)
     return (uint64_t)ts.tv_sec * 1000000000ULL + (uint64_t)ts.tv_nsec;
 }
 
-/* Read CPU frequency from /proc/cpuinfo for accurate cycle estimation */
+/* Read CPU frequency for accurate cycle estimation */
 static double cpu_freq_ghz(void)
 {
+#ifdef __APPLE__
+    uint64_t freq = 0;
+    size_t size = sizeof(freq);
+    if (sysctlbyname("hw.cpufrequency", &freq, &size, NULL, 0) == 0 && freq > 0)
+        return freq / 1e9;
+    return 0.0;
+#elif defined(__linux__)
     FILE *f = fopen("/proc/cpuinfo", "r");
     if (!f) return 0.0;
     char line[256];
@@ -39,6 +49,9 @@ static double cpu_freq_ghz(void)
     }
     fclose(f);
     return freq > 0.0 ? freq : 3.0; /* fallback to 3 GHz if unavailable */
+#else
+    return 0.0; /* unsupported platform */
+#endif
 }
 
 /* Scalar reference implementations for comparison */
@@ -107,33 +120,6 @@ static uint32_t scalar_l2sq_u8(const uint8_t *a, const uint8_t *b, size_t n)
         sum += diff * diff;
     }
     return sum;
-}
-
-/* Scalar cosine references for validation (used in bench_scalar_vs_simd) */
-static float scalar_cosine_i8(const int8_t *a, const int8_t *b, size_t n)
-{
-    int64_t dot = 0, na = 0, nb = 0;
-    for (size_t i = 0; i < n; i++) {
-        int32_t ai = a[i], bi = b[i];
-        dot += (int64_t)ai * bi;
-        na += (int64_t)ai * ai;
-        nb += (int64_t)bi * bi;
-    }
-    if (na == 0 || nb == 0) return 0.0f;
-    return (float)dot / (sqrtf((float)na) * sqrtf((float)nb));
-}
-
-static float scalar_cosine_u8(const uint8_t *a, const uint8_t *b, size_t n)
-{
-    uint64_t dot = 0, na = 0, nb = 0;
-    for (size_t i = 0; i < n; i++) {
-        uint32_t ai = a[i], bi = b[i];
-        dot += (uint64_t)ai * bi;
-        na += (uint64_t)ai * ai;
-        nb += (uint64_t)bi * bi;
-    }
-    if (na == 0 || nb == 0) return 0.0f;
-    return (float)dot / (sqrtf((float)na) * sqrtf((float)nb));
 }
 
 /* Benchmark a single f32 function */
@@ -256,8 +242,8 @@ static void bench_scalar_vs_simd_one(const char *name,
                                  float (*simd_fn)(const float*, const float*, size_t),
                                  const float *a, const float *b, size_t n, int iters)
 {
-    /* Warmup */
-    float result = 0;
+    /* Warmup (volatile prevents optimization) */
+    volatile float result = 0;
     for (int i = 0; i < WARMUP_ITERS; i++) {
         result += scalar_fn(a, b, n);
         result += simd_fn(a, b, n);
@@ -265,7 +251,7 @@ static void bench_scalar_vs_simd_one(const char *name,
 
     /* Benchmark scalar */
     uint64_t start = ns_now();
-    float scalar_result = 0;
+    volatile float scalar_result = 0;
     for (int i = 0; i < iters; i++) {
         scalar_result += scalar_fn(a, b, n);
     }
@@ -274,7 +260,7 @@ static void bench_scalar_vs_simd_one(const char *name,
 
     /* Benchmark SIMD */
     start = ns_now();
-    float simd_result = 0;
+    volatile float simd_result = 0;
     for (int i = 0; i < iters; i++) {
         simd_result += simd_fn(a, b, n);
     }
@@ -295,14 +281,15 @@ static void bench_scalar_vs_simd_i8(const char *name,
                                     int32_t (*simd_fn)(const int8_t*, const int8_t*, size_t),
                                     const int8_t *a, const int8_t *b, size_t n, int iters)
 {
-    int32_t result = 0;
+    /* Warmup (volatile prevents optimization) */
+    volatile int32_t result = 0;
     for (int i = 0; i < WARMUP_ITERS; i++) {
         result += scalar_fn(a, b, n);
         result += simd_fn(a, b, n);
     }
 
     uint64_t start = ns_now();
-    int32_t scalar_result = 0;
+    volatile int32_t scalar_result = 0;
     for (int i = 0; i < iters; i++) {
         scalar_result += scalar_fn(a, b, n);
     }
@@ -310,7 +297,7 @@ static void bench_scalar_vs_simd_i8(const char *name,
     double scalar_ns = (double)(end - start) / iters;
 
     start = ns_now();
-    int32_t simd_result = 0;
+    volatile int32_t simd_result = 0;
     for (int i = 0; i < iters; i++) {
         simd_result += simd_fn(a, b, n);
     }
@@ -331,14 +318,15 @@ static void bench_scalar_vs_simd_u8(const char *name,
                                     uint32_t (*simd_fn)(const uint8_t*, const uint8_t*, size_t),
                                     const uint8_t *a, const uint8_t *b, size_t n, int iters)
 {
-    uint32_t result = 0;
+    /* Warmup (volatile prevents optimization) */
+    volatile uint32_t result = 0;
     for (int i = 0; i < WARMUP_ITERS; i++) {
         result += scalar_fn(a, b, n);
         result += simd_fn(a, b, n);
     }
 
     uint64_t start = ns_now();
-    uint32_t scalar_result = 0;
+    volatile uint32_t scalar_result = 0;
     for (int i = 0; i < iters; i++) {
         scalar_result += scalar_fn(a, b, n);
     }
@@ -346,7 +334,7 @@ static void bench_scalar_vs_simd_u8(const char *name,
     double scalar_ns = (double)(end - start) / iters;
 
     start = ns_now();
-    uint32_t simd_result = 0;
+    volatile uint32_t simd_result = 0;
     for (int i = 0; i < iters; i++) {
         simd_result += simd_fn(a, b, n);
     }

@@ -62,12 +62,14 @@ static void dispatch_init_scalar(void);
 static void dispatch_init_sse2(void);
 static void dispatch_init_avx2(void);
 static void dispatch_init_avx512(void);
+#if defined(__aarch64__) || defined(_M_ARM64)
 static void dispatch_init_neon(void);
+static int cpu_has_neon(void);
+#endif
 
 static int cpu_has_avx2_runtime(void);
 static int cpu_has_avx512f_runtime(void);
 static int cpu_has_avx512f_base(void);
-static int cpu_has_neon(void);
 
 #ifdef VEK_HAVE_AVX512
 /* Forward declarations for AVX-512 f32 kernels (used by partial AVX-512 dispatch) */
