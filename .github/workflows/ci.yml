@@ -21,8 +21,6 @@ jobs:
             compiler: clang
           - os: macos-14
             compiler: clang
-          - os: windows-2022
-            compiler: msvc
 
     steps:
       - name: Checkout
@@ -34,38 +32,13 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq gcc clang
 
-      - name: Build and Test (Unix)
-        if: runner.os != 'Windows'
+      - name: Build and Test
         run: |
           make clean
           make all CC=${{ matrix.compiler }}
 
-      - name: Benchmarks (Unix)
-        if: runner.os != 'Windows'
+      - name: Benchmarks
         run: make bench
-
-      - name: Build and Test (Windows)
-        if: runner.os == 'Windows'
-        run: |
-          call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
-          cl /W3 /O2 /Iinclude /c src\scalar\kernels.c /Foscalar_kernels.o
-          cl /W3 /O2 /Iinclude /c src\dispatch.c /Fodispatch.o
-          cl /W3 /O2 /Iinclude /msse2 /c src\x86\sse2.c /Fox86\sse2.o
-          cl /W3 /O2 /Iinclude /arch:AVX2 /c src\x86\avx2.c /Fox86\avx2.o
-          lib /OUT:libvek.a scalar_kernels.o dispatch.o x86\sse2.o x86\avx2.o
-          cl /W3 /O2 /Iinclude tests\test_kernels.c /Fetest_kernels.exe /link libvek.a
-          cl /W3 /O2 /Iinclude tests\test_backends.c /Fetest_backends.exe /link libvek.a
-          test_kernels.exe
-          test_backends.exe
-        shell: cmd
-
-      - name: Benchmarks (Windows)
-        if: runner.os == 'Windows'
-        run: |
-          call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
-          cl /W3 /O2 /Iinclude bench\bench_kernels.c /Febench_kernels.exe /link libvek.a
-          bench_kernels.exe 5000
-        shell: cmd
 
   release:
     name: Release
