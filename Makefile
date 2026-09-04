@@ -3,7 +3,7 @@
 
 CC = gcc
 CFLAGS = -std=c11 -O3 -Wall -Wextra -pedantic -Iinclude -fPIC
-LDFLAGS = -lm -lpthread
+LDFLAGS = -lm
 
 # Platform detection
 UNAME_S := $(shell uname -s 2>/dev/null)
@@ -13,6 +13,7 @@ UNAME_M := $(shell uname -m 2>/dev/null)
 ifeq ($(UNAME_S),Darwin)
     LIB_EXT = .dylib
     SHLIB_FLAGS = -dynamiclib
+    LDFLAGS += -lpthread
 else ifeq ($(OS),Windows_NT)
     LIB_EXT = .dll
     SHLIB_FLAGS = -shared
@@ -20,6 +21,7 @@ else ifeq ($(OS),Windows_NT)
 else
     LIB_EXT = .so
     SHLIB_FLAGS = -shared
+    LDFLAGS += -lpthread
 endif
 
 # SIMD flags per backend (x86_64)

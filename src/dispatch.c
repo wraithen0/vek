@@ -6,9 +6,14 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
-#include <pthread.h>
 #include <stdatomic.h>
 #include "vek.h"
+
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <pthread.h>
+#endif
 
 /* Function pointer types */
 typedef float (*vek_dot_f32_fn)(const float*, const float*, size_t);
@@ -55,7 +60,11 @@ static struct {
 } g_dispatch = {0};
 
 /* Thread-safe initialization */
+#ifdef _WIN32
+static INIT_ONCE g_init_once = INIT_ONCE_STATIC_INIT;
+#else
 static pthread_once_t g_init_once = PTHREAD_ONCE_INIT;
+#endif
 
 /* Forward declarations for static functions */
 static void dispatch_init_scalar(void);
@@ -458,7 +467,17 @@ static void dispatch_init_neon(void)
 
 int vek_init(void)
 {
+#ifdef _WIN32
+    BOOL pending = FALSE;
+    InitOnceBeginInitialize(&g_init_once, 0, &pending, NULL);
+    if (pending) {
+        dispatch_init();
+        InitOnceComplete(&g_init_once, 0, NULL);
+    }
+    return 0;
+#else
     return pthread_once(&g_init_once, dispatch_init);
+#endif
 }
 
 const char* vek_backend_name(void)
