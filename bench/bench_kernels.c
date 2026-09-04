@@ -7,7 +7,9 @@
 #define _DARWIN_C_SOURCE  /* Enable BSD types like u_int, u_char on macOS */
 #endif
 
+#ifndef _WIN32
 #define _POSIX_C_SOURCE 199309L
+#endif
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -19,17 +21,36 @@
 #include <sys/types.h>
 #include <sys/sysctl.h>
 #endif
+#ifdef _WIN32
+#include <windows.h>
+#endif
 #include "vek.h"
 
 #define WARMUP_ITERS 1000
 #define BENCH_ITERS  100000
 
+/* Aligned memory allocation (platform-specific) */
+#ifdef _WIN32
+#define ALIGNED_ALLOC(size, alignment) _aligned_malloc(size, alignment)
+#define ALIGNED_FREE(ptr) _aligned_free(ptr)
+#else
+#define ALIGNED_ALLOC(size, alignment) aligned_alloc(alignment, size)
+#define ALIGNED_FREE(ptr) free(ptr)
+#endif
+
 /* High-resolution timer */
 static inline uint64_t ns_now(void)
 {
+#ifdef _WIN32
+    LARGE_INTEGER freq, counter;
+    QueryPerformanceFrequency(&freq);
+    QueryPerformanceCounter(&counter);
+    return (uint64_t)(counter.QuadPart * 1000000000ULL / freq.QuadPart);
+#else
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
     return (uint64_t)ts.tv_sec * 1000000000ULL + (uint64_t)ts.tv_nsec;
+#endif
 }
 
 /* Read CPU frequency for accurate cycle estimation */
@@ -359,10 +380,10 @@ static void bench_scalar_vs_simd_quantized(size_t n, int iters)
 {
     printf("\n=== Scalar vs SIMD comparison (quantized, n=%zu) ===\n", n);
 
-    int8_t *a_i8 = aligned_alloc(64, n * sizeof(int8_t));
-    int8_t *b_i8 = aligned_alloc(64, n * sizeof(int8_t));
-    uint8_t *a_u8 = aligned_alloc(64, n * sizeof(uint8_t));
-    uint8_t *b_u8 = aligned_alloc(64, n * sizeof(uint8_t));
+    int8_t *a_i8 = ALIGNED_ALLOC(n * sizeof(int8_t), 64);
+    int8_t *b_i8 = ALIGNED_ALLOC(n * sizeof(int8_t), 64);
+    uint8_t *a_u8 = ALIGNED_ALLOC(n * sizeof(uint8_t), 64);
+    uint8_t *b_u8 = ALIGNED_ALLOC(n * sizeof(uint8_t), 64);
 
     for (size_t i = 0; i < n; i++) {
         a_i8[i] = (int8_t)(i % 256) - 128;
@@ -379,7 +400,7 @@ static void bench_scalar_vs_simd_quantized(size_t n, int iters)
     bench_scalar_vs_simd_u8("vek_dot_u8",    scalar_dot_u8,    vek_dot_u8,    a_u8, b_u8, n, iters);
     bench_scalar_vs_simd_u8("vek_l2sq_u8",   scalar_l2sq_u8,   vek_l2sq_u8,   a_u8, b_u8, n, iters);
 
-    free(a_i8); free(b_i8); free(a_u8); free(b_u8);
+    ALIGNED_FREE(a_i8); ALIGNED_FREE(b_i8); ALIGNED_FREE(a_u8); ALIGNED_FREE(b_u8);
 }
 
 /* Benchmark all f32 kernels for a given vector size */
@@ -387,8 +408,8 @@ static void bench_size(size_t n, int iters, double freq_ghz)
 {
     printf("\n=== Vector size: %zu ===\n", n);
 
-    float *a = aligned_alloc(64, n * sizeof(float));
-    float *b = aligned_alloc(64, n * sizeof(float));
+    float *a = ALIGNED_ALLOC(n * sizeof(float), 64);
+    float *b = ALIGNED_ALLOC(n * sizeof(float), 64);
 
     for (size_t i = 0; i < n; i++) {
         a[i] = (float)i * 0.001f;
@@ -402,8 +423,8 @@ static void bench_size(size_t n, int iters, double freq_ghz)
     bench_kernel("vek_l2sq_f32",   vek_l2sq_f32,   a, b, n, iters, freq_ghz);
     bench_kernel("vek_cosine_f32", vek_cosine_f32, a, b, n, iters, freq_ghz);
 
-    free(a);
-    free(b);
+    ALIGNED_FREE(a);
+    ALIGNED_FREE(b);
 }
 
 /* Benchmark quantized kernels for a given vector size */
@@ -411,10 +432,10 @@ static void bench_size_quantized(size_t n, int iters, double freq_ghz)
 {
     printf("\n=== Quantized kernels (n=%zu) ===\n", n);
 
-    int8_t *a_i8 = aligned_alloc(64, n * sizeof(int8_t));
-    int8_t *b_i8 = aligned_alloc(64, n * sizeof(int8_t));
-    uint8_t *a_u8 = aligned_alloc(64, n * sizeof(uint8_t));
-    uint8_t *b_u8 = aligned_alloc(64, n * sizeof(uint8_t));
+    int8_t *a_i8 = ALIGNED_ALLOC(n * sizeof(int8_t), 64);
+    int8_t *b_i8 = ALIGNED_ALLOC(n * sizeof(int8_t), 64);
+    uint8_t *a_u8 = ALIGNED_ALLOC(n * sizeof(uint8_t), 64);
+    uint8_t *b_u8 = ALIGNED_ALLOC(n * sizeof(uint8_t), 64);
 
     for (size_t i = 0; i < n; i++) {
         a_i8[i] = (int8_t)(i % 256) - 128;
@@ -433,7 +454,7 @@ static void bench_size_quantized(size_t n, int iters, double freq_ghz)
     bench_kernel_cos_i8("vek_cosine_i8", vek_cosine_i8, a_i8, b_i8, n, iters, freq_ghz);
     bench_kernel_cos_u8("vek_cosine_u8", vek_cosine_u8, a_u8, b_u8, n, iters, freq_ghz);
 
-    free(a_i8); free(b_i8); free(a_u8); free(b_u8);
+    ALIGNED_FREE(a_i8); ALIGNED_FREE(b_i8); ALIGNED_FREE(a_u8); ALIGNED_FREE(b_u8);
 }
 
 /* Compare scalar vs SIMD for f32 */
@@ -441,8 +462,8 @@ static void bench_scalar_vs_simd(size_t n, int iters)
 {
     printf("\n=== Scalar vs SIMD comparison (n=%zu) ===\n", n);
 
-    float *a = aligned_alloc(64, n * sizeof(float));
-    float *b = aligned_alloc(64, n * sizeof(float));
+    float *a = ALIGNED_ALLOC(n * sizeof(float), 64);
+    float *b = ALIGNED_ALLOC(n * sizeof(float), 64);
 
     for (size_t i = 0; i < n; i++) {
         a[i] = (float)i * 0.001f;
@@ -456,8 +477,8 @@ static void bench_scalar_vs_simd(size_t n, int iters)
     bench_scalar_vs_simd_one("vek_l2sq_f32",   scalar_l2sq_f32,   vek_l2sq_f32,   a, b, n, iters);
     bench_scalar_vs_simd_one("vek_cosine_f32", scalar_cosine_f32, vek_cosine_f32, a, b, n, iters);
 
-    free(a);
-    free(b);
+    ALIGNED_FREE(a);
+    ALIGNED_FREE(b);
 }
 
 int main(int argc, char **argv)
