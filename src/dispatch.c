@@ -6,13 +6,13 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
-#include <stdatomic.h>
 #include "vek.h"
 
 #ifdef _WIN32
 #include <windows.h>
 #else
 #include <pthread.h>
+#include <stdatomic.h>
 #endif
 
 /* Function pointer types */
@@ -56,7 +56,11 @@ static struct {
     vek_l2sq_bf16_fn  l2sq_bf16;
     vek_cosine_bf16_fn cosine_bf16;
     const char*       name;
+#ifdef _WIN32
+    volatile LONG     initialized;
+#else
     atomic_int        initialized;
+#endif
 } g_dispatch = {0};
 
 /* Thread-safe initialization */
@@ -86,6 +90,16 @@ float vek_dot_f32_avx512(const float*, const float*, size_t);
 float vek_l2sq_f32_avx512(const float*, const float*, size_t);
 float vek_cosine_f32_avx512(const float*, const float*, size_t);
 #endif
+
+/* Check if dispatch is initialized (thread-safe) */
+static int is_initialized(void)
+{
+#ifdef _WIN32
+    return InterlockedCompareExchange(&g_dispatch.initialized, 0, 0) != 0;
+#else
+    return atomic_load_explicit(&g_dispatch.initialized, memory_order_acquire) != 0;
+#endif
+}
 
 static void dispatch_init(void)
 {
@@ -126,7 +140,11 @@ static void dispatch_init(void)
     }
 #endif
 
+#ifdef _WIN32
+    InterlockedExchange(&g_dispatch.initialized, 1);
+#else
     atomic_store_explicit(&g_dispatch.initialized, 1, memory_order_release);
+#endif
 }
 
 /* Forward declarations for backend functions */
@@ -482,7 +500,7 @@ int vek_init(void)
 
 const char* vek_backend_name(void)
 {
-    if (atomic_load_explicit(&g_dispatch.initialized, memory_order_acquire) == 0) {
+    if (!is_initialized()) {
         vek_init();
     }
     return g_dispatch.name;
@@ -490,7 +508,7 @@ const char* vek_backend_name(void)
 
 float vek_dot_f32(const float *a, const float *b, size_t n)
 {
-    if (atomic_load_explicit(&g_dispatch.initialized, memory_order_acquire) == 0) {
+    if (!is_initialized()) {
         vek_init();
     }
     return g_dispatch.dot_f32(a, b, n);
@@ -498,7 +516,7 @@ float vek_dot_f32(const float *a, const float *b, size_t n)
 
 float vek_l2sq_f32(const float *a, const float *b, size_t n)
 {
-    if (atomic_load_explicit(&g_dispatch.initialized, memory_order_acquire) == 0) {
+    if (!is_initialized()) {
         vek_init();
     }
     return g_dispatch.l2sq_f32(a, b, n);
@@ -506,7 +524,7 @@ float vek_l2sq_f32(const float *a, const float *b, size_t n)
 
 float vek_cosine_f32(const float *a, const float *b, size_t n)
 {
-    if (atomic_load_explicit(&g_dispatch.initialized, memory_order_acquire) == 0) {
+    if (!is_initialized()) {
         vek_init();
     }
     return g_dispatch.cosine_f32(a, b, n);
@@ -514,7 +532,7 @@ float vek_cosine_f32(const float *a, const float *b, size_t n)
 
 int32_t vek_dot_i8(const int8_t *a, const int8_t *b, size_t n)
 {
-    if (atomic_load_explicit(&g_dispatch.initialized, memory_order_acquire) == 0) {
+    if (!is_initialized()) {
         vek_init();
     }
     return g_dispatch.dot_i8(a, b, n);
@@ -522,7 +540,7 @@ int32_t vek_dot_i8(const int8_t *a, const int8_t *b, size_t n)
 
 uint32_t vek_dot_u8(const uint8_t *a, const uint8_t *b, size_t n)
 {
-    if (atomic_load_explicit(&g_dispatch.initialized, memory_order_acquire) == 0) {
+    if (!is_initialized()) {
         vek_init();
     }
     return g_dispatch.dot_u8(a, b, n);
@@ -530,7 +548,7 @@ uint32_t vek_dot_u8(const uint8_t *a, const uint8_t *b, size_t n)
 
 int32_t vek_l2sq_i8(const int8_t *a, const int8_t *b, size_t n)
 {
-    if (atomic_load_explicit(&g_dispatch.initialized, memory_order_acquire) == 0) {
+    if (!is_initialized()) {
         vek_init();
     }
     return g_dispatch.l2sq_i8(a, b, n);
@@ -538,7 +556,7 @@ int32_t vek_l2sq_i8(const int8_t *a, const int8_t *b, size_t n)
 
 uint32_t vek_l2sq_u8(const uint8_t *a, const uint8_t *b, size_t n)
 {
-    if (atomic_load_explicit(&g_dispatch.initialized, memory_order_acquire) == 0) {
+    if (!is_initialized()) {
         vek_init();
     }
     return g_dispatch.l2sq_u8(a, b, n);
@@ -546,7 +564,7 @@ uint32_t vek_l2sq_u8(const uint8_t *a, const uint8_t *b, size_t n)
 
 float vek_cosine_i8(const int8_t *a, const int8_t *b, size_t n)
 {
-    if (atomic_load_explicit(&g_dispatch.initialized, memory_order_acquire) == 0) {
+    if (!is_initialized()) {
         vek_init();
     }
     return g_dispatch.cosine_i8(a, b, n);
@@ -554,7 +572,7 @@ float vek_cosine_i8(const int8_t *a, const int8_t *b, size_t n)
 
 float vek_cosine_u8(const uint8_t *a, const uint8_t *b, size_t n)
 {
-    if (atomic_load_explicit(&g_dispatch.initialized, memory_order_acquire) == 0) {
+    if (!is_initialized()) {
         vek_init();
     }
     return g_dispatch.cosine_u8(a, b, n);
@@ -562,7 +580,7 @@ float vek_cosine_u8(const uint8_t *a, const uint8_t *b, size_t n)
 
 int32_t vek_dot_b1(const uint64_t *a, const uint64_t *b, size_t n)
 {
-    if (atomic_load_explicit(&g_dispatch.initialized, memory_order_acquire) == 0) {
+    if (!is_initialized()) {
         vek_init();
     }
     return g_dispatch.dot_b1(a, b, n);
@@ -570,7 +588,7 @@ int32_t vek_dot_b1(const uint64_t *a, const uint64_t *b, size_t n)
 
 int32_t vek_hamming_b1(const uint64_t *a, const uint64_t *b, size_t n)
 {
-    if (atomic_load_explicit(&g_dispatch.initialized, memory_order_acquire) == 0) {
+    if (!is_initialized()) {
         vek_init();
     }
     return g_dispatch.hamming_b1(a, b, n);
@@ -578,7 +596,7 @@ int32_t vek_hamming_b1(const uint64_t *a, const uint64_t *b, size_t n)
 
 float vek_cosine_b1(const uint64_t *a, const uint64_t *b, size_t n)
 {
-    if (atomic_load_explicit(&g_dispatch.initialized, memory_order_acquire) == 0) {
+    if (!is_initialized()) {
         vek_init();
     }
     return g_dispatch.cosine_b1(a, b, n);
@@ -588,7 +606,7 @@ float vek_cosine_b1(const uint64_t *a, const uint64_t *b, size_t n)
 
 float vek_dot_f16(const vek_f16 *a, const vek_f16 *b, size_t n)
 {
-    if (atomic_load_explicit(&g_dispatch.initialized, memory_order_acquire) == 0) {
+    if (!is_initialized()) {
         vek_init();
     }
     return g_dispatch.dot_f16(a, b, n);
@@ -596,7 +614,7 @@ float vek_dot_f16(const vek_f16 *a, const vek_f16 *b, size_t n)
 
 float vek_l2sq_f16(const vek_f16 *a, const vek_f16 *b, size_t n)
 {
-    if (atomic_load_explicit(&g_dispatch.initialized, memory_order_acquire) == 0) {
+    if (!is_initialized()) {
         vek_init();
     }
     return g_dispatch.l2sq_f16(a, b, n);
@@ -604,7 +622,7 @@ float vek_l2sq_f16(const vek_f16 *a, const vek_f16 *b, size_t n)
 
 float vek_cosine_f16(const vek_f16 *a, const vek_f16 *b, size_t n)
 {
-    if (atomic_load_explicit(&g_dispatch.initialized, memory_order_acquire) == 0) {
+    if (!is_initialized()) {
         vek_init();
     }
     return g_dispatch.cosine_f16(a, b, n);
@@ -614,7 +632,7 @@ float vek_cosine_f16(const vek_f16 *a, const vek_f16 *b, size_t n)
 
 float vek_dot_bf16(const vek_bf16 *a, const vek_bf16 *b, size_t n)
 {
-    if (atomic_load_explicit(&g_dispatch.initialized, memory_order_acquire) == 0) {
+    if (!is_initialized()) {
         vek_init();
     }
     return g_dispatch.dot_bf16(a, b, n);
@@ -622,7 +640,7 @@ float vek_dot_bf16(const vek_bf16 *a, const vek_bf16 *b, size_t n)
 
 float vek_l2sq_bf16(const vek_bf16 *a, const vek_bf16 *b, size_t n)
 {
-    if (atomic_load_explicit(&g_dispatch.initialized, memory_order_acquire) == 0) {
+    if (!is_initialized()) {
         vek_init();
     }
     return g_dispatch.l2sq_bf16(a, b, n);
@@ -630,7 +648,7 @@ float vek_l2sq_bf16(const vek_bf16 *a, const vek_bf16 *b, size_t n)
 
 float vek_cosine_bf16(const vek_bf16 *a, const vek_bf16 *b, size_t n)
 {
-    if (atomic_load_explicit(&g_dispatch.initialized, memory_order_acquire) == 0) {
+    if (!is_initialized()) {
         vek_init();
     }
     return g_dispatch.cosine_bf16(a, b, n);

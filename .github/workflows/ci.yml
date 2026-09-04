@@ -48,13 +48,13 @@ jobs:
         if: runner.os == 'Windows'
         run: |
           call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
-          cl /nologo /std:c11 /W3 /O2 /Iinclude /c src\scalar\kernels.c /Fokernels.o
-          cl /nologo /std:c11 /W3 /O2 /Iinclude /c src\dispatch.c /Fodispatch.o
-          cl /nologo /std:c11 /W3 /O2 /Iinclude /arch:SSE2 /c src\x86\sse2.c /Fosse2.o
-          cl /nologo /std:c11 /W3 /O2 /Iinclude /arch:AVX2 /c src\x86\avx2.c /Foavx2.o
+          cl /nologo /W3 /O2 /Iinclude /c src\scalar\kernels.c /Fokernels.o
+          cl /nologo /W3 /O2 /Iinclude /c src\dispatch.c /Fodispatch.o
+          cl /nologo /W3 /O2 /Iinclude /arch:SSE2 /c src\x86\sse2.c /Fosse2.o
+          cl /nologo /W3 /O2 /Iinclude /arch:AVX2 /c src\x86\avx2.c /Foavx2.o
           lib /nologo /OUT:libvek.lib kernels.o dispatch.o sse2.o avx2.o
-          cl /nologo /std:c11 /W3 /O2 /Iinclude tests\test_kernels.c /Fetest_kernels.exe /link libvek.lib
-          cl /nologo /std:c11 /W3 /O2 /Iinclude tests\test_backends.c /Fetest_backends.exe /link libvek.lib
+          cl /nologo /W3 /O2 /Iinclude tests\test_kernels.c /Fetest_kernels.exe /link libvek.lib
+          cl /nologo /W3 /O2 /Iinclude tests\test_backends.c /Fetest_backends.exe /link libvek.lib
           test_kernels.exe
           test_backends.exe
         shell: cmd
@@ -63,7 +63,7 @@ jobs:
         if: runner.os == 'Windows'
         run: |
           call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
-          cl /nologo /std:c11 /W3 /O2 /Iinclude bench\bench_kernels.c /Febench_kernels.exe /link libvek.lib
+          cl /nologo /W3 /O2 /Iinclude bench\bench_kernels.c /Febench_kernels.exe /link libvek.lib
           bench_kernels.exe 5000
         shell: cmd
 
