@@ -16,6 +16,7 @@
 - **Half-precision support** — f16 (IEEE 754) and bf16 (Brain Float) with automatic conversion
 - **Scalar fallback always compiled** — correctness first, SIMD only accelerates
 - **No heap allocation in hot path** — stack-only, cache-friendly
+- **Cross-platform** — Linux, macOS, Windows support
 - **Permissive licensing** — MIT OR Apache-2.0
 
 ## Supported Operations
@@ -130,6 +131,17 @@ make debug
 make warn
 ```
 
+### Windows Build
+
+```cmd
+call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
+cl /nologo /W3 /O2 /Iinclude /c src\scalar\kernels.c /Fokernels.o
+cl /nologo /W3 /O2 /Iinclude /c src\dispatch.c /Fodispatch.o
+cl /nologo /W3 /O2 /Iinclude /arch:SSE2 /c src\x86\sse2.c /Fosse2.o
+cl /nologo /W3 /O2 /Iinclude /arch:AVX2 /c src\x86\avx2.c /Foavx2.o
+lib /nologo /OUT:libvek.lib kernels.o dispatch.o sse2.o avx2.o
+```
+
 ### Vendoring
 
 Just copy `include/vek.h` and `src/` into your project. Add all `.c` files to your build — no CMake, pkg-config, or package manager required.
@@ -199,33 +211,6 @@ float    vek_bf16_to_float(vek_bf16 val);
 
 For binary kernels, `n` is the number of **bits** (not words). Internally, this is converted to words via `(n + 63) / 64`. Bits beyond `n` in the final word are masked to zero.
 
-## Rust FFI
-
-```rust
-// bindings/rust/vek.rs
-extern "C" {
-    pub fn vek_init() -> i32;
-    pub fn vek_backend_name() -> *const c_char;
-
-    pub fn vek_dot_f32(a: *const f32, b: *const f32, n: usize) -> f32;
-    pub fn vek_l2sq_f32(a: *const f32, b: *const f32, n: usize) -> f32;
-    pub fn vek_cosine_f32(a: *const f32, b: *const f32, n: usize) -> f32;
-
-    pub fn vek_dot_i8(a: *const i8, b: *const i8, n: usize) -> i32;
-    pub fn vek_dot_u8(a: *const u8, b: *const u8, n: usize) -> u32;
-    pub fn vek_l2sq_i8(a: *const i8, b: *const i8, n: usize) -> i32;
-    pub fn vek_l2sq_u8(a: *const u8, b: *const u8, n: usize) -> u32;
-    pub fn vek_cosine_i8(a: *const i8, b: *const i8, n: usize) -> f32;
-    pub fn vek_cosine_u8(a: *const u8, b: *const u8, n: usize) -> f32;
-
-    pub fn vek_dot_b1(a: *const u64, b: *const u64, n: usize) -> i32;
-    pub fn vek_hamming_b1(a: *const u64, b: *const u64, n: usize) -> i32;
-    pub fn vek_cosine_b1(a: *const u64, b: *const u64, n: usize) -> f32;
-}
-```
-
-No crate dependency — just link `libvek.a` / `libvek.so` / `vek.dll`.
-
 ## Benchmarks
 
 Run on your hardware:
@@ -286,7 +271,7 @@ make test
 - [x] v0.7 — CMake support, Doxygen, examples
 - [x] v0.8 — Thread-safe atomic init, NEON b1 ops
 - [x] v1.0 — Stable API, published benchmarks, full docs
-- [x] v1.1 — Compensated summation, AVX-512 masked loads, f16/bf16 support
+- [x] v1.1 — Compensated summation, AVX-512 masked loads, f16/bf16 support, Windows CI
 - [ ] v1.2 — Package manager support (PyPI, crates.io, npm)
 
 ## License
