@@ -3,6 +3,10 @@
  * Microbenchmark for vector kernels using clock_gettime
  */
 
+#ifdef __APPLE__
+#define _DARWIN_C_SOURCE  /* Enable BSD types like u_int, u_char on macOS */
+#endif
+
 #define _POSIX_C_SOURCE 199309L
 
 #include <stdio.h>
