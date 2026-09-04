@@ -23,6 +23,12 @@ typedef float (*vek_cosine_u8_fn)(const uint8_t*, const uint8_t*, size_t);
 typedef int32_t (*vek_dot_b1_fn)(const uint64_t*, const uint64_t*, size_t);
 typedef int32_t (*vek_hamming_b1_fn)(const uint64_t*, const uint64_t*, size_t);
 typedef float (*vek_cosine_b1_fn)(const uint64_t*, const uint64_t*, size_t);
+typedef float (*vek_dot_f16_fn)(const vek_f16*, const vek_f16*, size_t);
+typedef float (*vek_l2sq_f16_fn)(const vek_f16*, const vek_f16*, size_t);
+typedef float (*vek_cosine_f16_fn)(const vek_f16*, const vek_f16*, size_t);
+typedef float (*vek_dot_bf16_fn)(const vek_bf16*, const vek_bf16*, size_t);
+typedef float (*vek_l2sq_bf16_fn)(const vek_bf16*, const vek_bf16*, size_t);
+typedef float (*vek_cosine_bf16_fn)(const vek_bf16*, const vek_bf16*, size_t);
 
 /* Dispatch table */
 static struct {
@@ -38,6 +44,12 @@ static struct {
     vek_dot_b1_fn     dot_b1;
     vek_hamming_b1_fn hamming_b1;
     vek_cosine_b1_fn  cosine_b1;
+    vek_dot_f16_fn    dot_f16;
+    vek_l2sq_f16_fn   l2sq_f16;
+    vek_cosine_f16_fn cosine_f16;
+    vek_dot_bf16_fn   dot_bf16;
+    vek_l2sq_bf16_fn  l2sq_bf16;
+    vek_cosine_bf16_fn cosine_bf16;
     const char*       name;
     atomic_int        initialized;
 } g_dispatch = {0};
@@ -56,6 +68,14 @@ static void dispatch_init_neon(void);
 
 static int cpu_has_avx2_runtime(void);
 static int cpu_has_avx512f_runtime(void);
+static int cpu_has_avx512f_base(void);
+
+#ifdef VEK_HAVE_AVX512
+/* Forward declarations for AVX-512 f32 kernels (used by partial AVX-512 dispatch) */
+float vek_dot_f32_avx512(const float*, const float*, size_t);
+float vek_l2sq_f32_avx512(const float*, const float*, size_t);
+float vek_cosine_f32_avx512(const float*, const float*, size_t);
+#endif
 
 static void dispatch_init(void)
 {
@@ -63,12 +83,18 @@ static void dispatch_init(void)
     dispatch_init_scalar();
 
 #if defined(__x86_64__) || defined(_M_X64)
-    if (cpu_has_avx512f_runtime()) {
 #ifdef VEK_HAVE_AVX512
+    if (cpu_has_avx512f_runtime()) {
+        /* Full AVX-512: f32 + quantized + binary all use AVX-512 */
         dispatch_init_avx512();
-#else
+    }
+    else if (cpu_has_avx512f_base()) {
+        /* AVX-512F without VNNI/VPOPCNTDQ: use AVX-512 for f32, AVX2 for rest */
         dispatch_init_avx2();
-#endif
+        g_dispatch.dot_f32    = vek_dot_f32_avx512;
+        g_dispatch.l2sq_f32   = vek_l2sq_f32_avx512;
+        g_dispatch.cosine_f32 = vek_cosine_f32_avx512;
+        g_dispatch.name       = "avx512";
     }
     else if (cpu_has_avx2_runtime()) {
         dispatch_init_avx2();
@@ -76,6 +102,14 @@ static void dispatch_init(void)
     else {
         dispatch_init_sse2();
     }
+#else
+    if (cpu_has_avx2_runtime()) {
+        dispatch_init_avx2();
+    }
+    else {
+        dispatch_init_sse2();
+    }
+#endif
 #elif defined(__aarch64__) || defined(_M_ARM64)
     if (cpu_has_neon()) {
         dispatch_init_neon();
@@ -102,6 +136,14 @@ float vek_cosine_u8_scalar(const uint8_t*, const uint8_t*, size_t);
 int32_t vek_dot_b1_scalar(const uint64_t*, const uint64_t*, size_t);
 int32_t vek_hamming_b1_scalar(const uint64_t*, const uint64_t*, size_t);
 float vek_cosine_b1_scalar(const uint64_t*, const uint64_t*, size_t);
+
+/* f16/bf16 scalar reference (convert to f32 internally) */
+float vek_dot_f16_scalar(const vek_f16*, const vek_f16*, size_t);
+float vek_l2sq_f16_scalar(const vek_f16*, const vek_f16*, size_t);
+float vek_cosine_f16_scalar(const vek_f16*, const vek_f16*, size_t);
+float vek_dot_bf16_scalar(const vek_bf16*, const vek_bf16*, size_t);
+float vek_l2sq_bf16_scalar(const vek_bf16*, const vek_bf16*, size_t);
+float vek_cosine_bf16_scalar(const vek_bf16*, const vek_bf16*, size_t);
 
 /* SSE2 backend (x86_64 baseline) */
 #if defined(__x86_64__) || defined(_M_X64)
@@ -130,13 +172,14 @@ uint32_t vek_l2sq_u8_avx2(const uint8_t*, const uint8_t*, size_t);
 float vek_cosine_i8_avx2(const int8_t*, const int8_t*, size_t);
 float vek_cosine_u8_avx2(const uint8_t*, const uint8_t*, size_t);
 
-/* AVX-512 backend - only if compiled in */
+/* AVX-512 f32 kernels (AVX-512F only — no VNNI/VPOPCNTDQ needed) */
 #ifdef VEK_HAVE_AVX512
 float vek_dot_f32_avx512(const float*, const float*, size_t);
 float vek_l2sq_f32_avx512(const float*, const float*, size_t);
 float vek_cosine_f32_avx512(const float*, const float*, size_t);
+#endif
 
-/* AVX-512 quantized (VNNI) */
+/* AVX-512 quantized (VNNI) and binary (VPOPCNTDQ) — only if compiled in */
 int32_t vek_dot_i8_avx512(const int8_t*, const int8_t*, size_t);
 uint32_t vek_dot_u8_avx512(const uint8_t*, const uint8_t*, size_t);
 int32_t vek_l2sq_i8_avx512(const int8_t*, const int8_t*, size_t);
@@ -148,7 +191,6 @@ float vek_cosine_u8_avx512(const uint8_t*, const uint8_t*, size_t);
 int32_t vek_dot_b1_avx512(const uint64_t*, const uint64_t*, size_t);
 int32_t vek_hamming_b1_avx512(const uint64_t*, const uint64_t*, size_t);
 float vek_cosine_b1_avx512(const uint64_t*, const uint64_t*, size_t);
-#endif
 #endif
 
 /* NEON backend (ARM64) */
@@ -232,13 +274,6 @@ static int cpu_has_osxsave(void)
     return (ecx & (1u << 27)) != 0; /* OSXSAVE bit */
 }
 
-static int xgetbv_supported(void)
-{
-    uint32_t eax, ebx, ecx, edx;
-    cpuid(1, 0, &eax, &ebx, &ecx, &edx);
-    return (ecx & (1u << 27)) != 0; /* OSXSAVE */
-}
-
 static uint64_t xgetbv(void)
 {
 #if defined(_MSC_VER)
@@ -252,7 +287,7 @@ static uint64_t xgetbv(void)
 
 static int cpu_has_avx2_runtime(void)
 {
-    if (!cpu_has_osxsave() || !xgetbv_supported()) return 0;
+    if (!cpu_has_osxsave()) return 0;
     if (!cpu_has_avx() || !cpu_has_avx2()) return 0;
     /* Check FMA3 support (required by avx2.c's _mm256_fmadd_ps) */
     uint32_t eax, ebx, ecx, edx;
@@ -262,14 +297,19 @@ static int cpu_has_avx2_runtime(void)
     return (xcr0 & 0x6) == 0x6; /* XMM and YMM state saved */
 }
 
-static int cpu_has_avx512f_runtime(void)
+static int cpu_has_avx512f_base(void)
 {
-    if (!cpu_has_osxsave() || !xgetbv_supported()) return 0;
+    if (!cpu_has_osxsave()) return 0;
     if (!cpu_has_avx() || !cpu_has_avx2() || !cpu_has_avx512f()) return 0;
-    /* AVX-512 kernels use VNNI (dpbusd) and VPOPCNTDQ (vpopcntq) — require both */
-    if (!cpu_has_avx512vnni() || !cpu_has_avx512vpopcntdq()) return 0;
     uint64_t xcr0 = xgetbv();
     return (xcr0 & 0xe6) == 0xe6; /* XMM, YMM, ZMM, opmask state saved */
+}
+
+static int cpu_has_avx512f_runtime(void)
+{
+    /* Full AVX-512 (including VNNI + VPOPCNTDQ for quantized/binary kernels) */
+    if (!cpu_has_avx512f_base()) return 0;
+    return cpu_has_avx512vnni() && cpu_has_avx512vpopcntdq();
 }
 #endif /* x86_64 */
 
@@ -307,6 +347,13 @@ static void dispatch_init_scalar(void)
     g_dispatch.dot_b1     = vek_dot_b1_scalar;
     g_dispatch.hamming_b1 = vek_hamming_b1_scalar;
     g_dispatch.cosine_b1  = vek_cosine_b1_scalar;
+    /* f16/bf16: convert to f32, use scalar kernels */
+    g_dispatch.dot_f16    = vek_dot_f16_scalar;
+    g_dispatch.l2sq_f16   = vek_l2sq_f16_scalar;
+    g_dispatch.cosine_f16 = vek_cosine_f16_scalar;
+    g_dispatch.dot_bf16   = vek_dot_bf16_scalar;
+    g_dispatch.l2sq_bf16  = vek_l2sq_bf16_scalar;
+    g_dispatch.cosine_bf16 = vek_cosine_bf16_scalar;
     g_dispatch.name       = "scalar";
 }
 
@@ -325,6 +372,12 @@ static void dispatch_init_sse2(void)
     g_dispatch.dot_b1     = vek_dot_b1_scalar;
     g_dispatch.hamming_b1 = vek_hamming_b1_scalar;
     g_dispatch.cosine_b1  = vek_cosine_b1_scalar;
+    g_dispatch.dot_f16    = vek_dot_f16_scalar;
+    g_dispatch.l2sq_f16   = vek_l2sq_f16_scalar;
+    g_dispatch.cosine_f16 = vek_cosine_f16_scalar;
+    g_dispatch.dot_bf16   = vek_dot_bf16_scalar;
+    g_dispatch.l2sq_bf16  = vek_l2sq_bf16_scalar;
+    g_dispatch.cosine_bf16 = vek_cosine_bf16_scalar;
     g_dispatch.name       = "sse2";
 }
 
@@ -342,6 +395,12 @@ static void dispatch_init_avx2(void)
     g_dispatch.dot_b1     = vek_dot_b1_scalar;
     g_dispatch.hamming_b1 = vek_hamming_b1_scalar;
     g_dispatch.cosine_b1  = vek_cosine_b1_scalar;
+    g_dispatch.dot_f16    = vek_dot_f16_scalar;
+    g_dispatch.l2sq_f16   = vek_l2sq_f16_scalar;
+    g_dispatch.cosine_f16 = vek_cosine_f16_scalar;
+    g_dispatch.dot_bf16   = vek_dot_bf16_scalar;
+    g_dispatch.l2sq_bf16  = vek_l2sq_bf16_scalar;
+    g_dispatch.cosine_bf16 = vek_cosine_bf16_scalar;
     g_dispatch.name       = "avx2";
 }
 
@@ -360,6 +419,12 @@ static void dispatch_init_avx512(void)
     g_dispatch.dot_b1     = vek_dot_b1_avx512;
     g_dispatch.hamming_b1 = vek_hamming_b1_avx512;
     g_dispatch.cosine_b1  = vek_cosine_b1_avx512;
+    g_dispatch.dot_f16    = vek_dot_f16_scalar;
+    g_dispatch.l2sq_f16   = vek_l2sq_f16_scalar;
+    g_dispatch.cosine_f16 = vek_cosine_f16_scalar;
+    g_dispatch.dot_bf16   = vek_dot_bf16_scalar;
+    g_dispatch.l2sq_bf16  = vek_l2sq_bf16_scalar;
+    g_dispatch.cosine_bf16 = vek_cosine_bf16_scalar;
     g_dispatch.name       = "avx512";
 }
 #endif
@@ -380,6 +445,12 @@ static void dispatch_init_neon(void)
     g_dispatch.dot_b1     = vek_dot_b1_neon;
     g_dispatch.hamming_b1 = vek_hamming_b1_neon;
     g_dispatch.cosine_b1  = vek_cosine_b1_neon;
+    g_dispatch.dot_f16    = vek_dot_f16_scalar;
+    g_dispatch.l2sq_f16   = vek_l2sq_f16_scalar;
+    g_dispatch.cosine_f16 = vek_cosine_f16_scalar;
+    g_dispatch.dot_bf16   = vek_dot_bf16_scalar;
+    g_dispatch.l2sq_bf16  = vek_l2sq_bf16_scalar;
+    g_dispatch.cosine_bf16 = vek_cosine_bf16_scalar;
     g_dispatch.name       = "neon";
 }
 #endif
@@ -491,4 +562,56 @@ float vek_cosine_b1(const uint64_t *a, const uint64_t *b, size_t n)
         vek_init();
     }
     return g_dispatch.cosine_b1(a, b, n);
+}
+
+/* ===== f16 Dispatch Wrappers ===== */
+
+float vek_dot_f16(const vek_f16 *a, const vek_f16 *b, size_t n)
+{
+    if (atomic_load_explicit(&g_dispatch.initialized, memory_order_acquire) == 0) {
+        vek_init();
+    }
+    return g_dispatch.dot_f16(a, b, n);
+}
+
+float vek_l2sq_f16(const vek_f16 *a, const vek_f16 *b, size_t n)
+{
+    if (atomic_load_explicit(&g_dispatch.initialized, memory_order_acquire) == 0) {
+        vek_init();
+    }
+    return g_dispatch.l2sq_f16(a, b, n);
+}
+
+float vek_cosine_f16(const vek_f16 *a, const vek_f16 *b, size_t n)
+{
+    if (atomic_load_explicit(&g_dispatch.initialized, memory_order_acquire) == 0) {
+        vek_init();
+    }
+    return g_dispatch.cosine_f16(a, b, n);
+}
+
+/* ===== bf16 Dispatch Wrappers ===== */
+
+float vek_dot_bf16(const vek_bf16 *a, const vek_bf16 *b, size_t n)
+{
+    if (atomic_load_explicit(&g_dispatch.initialized, memory_order_acquire) == 0) {
+        vek_init();
+    }
+    return g_dispatch.dot_bf16(a, b, n);
+}
+
+float vek_l2sq_bf16(const vek_bf16 *a, const vek_bf16 *b, size_t n)
+{
+    if (atomic_load_explicit(&g_dispatch.initialized, memory_order_acquire) == 0) {
+        vek_init();
+    }
+    return g_dispatch.l2sq_bf16(a, b, n);
+}
+
+float vek_cosine_bf16(const vek_bf16 *a, const vek_bf16 *b, size_t n)
+{
+    if (atomic_load_explicit(&g_dispatch.initialized, memory_order_acquire) == 0) {
+        vek_init();
+    }
+    return g_dispatch.cosine_bf16(a, b, n);
 }

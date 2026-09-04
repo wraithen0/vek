@@ -7,35 +7,21 @@ on:
   pull_request:
     branches: [main]
 
-env:
-  CMAKE_VERSION: "3.16"
-
 jobs:
   build-test:
-    name: ${{ matrix.os }} / ${{ matrix.arch }} / ${{ matrix.compiler }}
+    name: ${{ matrix.os }} / ${{ matrix.compiler }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          # Linux x86_64
-          - os: ubuntu-latest
-            arch: x86_64
+          - os: ubuntu-22.04
             compiler: gcc
-          - os: ubuntu-latest
-            arch: x86_64
+          - os: ubuntu-22.04
             compiler: clang
-          # macOS x86_64
-          - os: macos-latest
-            arch: x86_64
+          - os: macos-14
             compiler: clang
-          # macOS ARM64 (Apple Silicon)
-          - os: macos-latest
-            arch: arm64
-            compiler: clang
-          # Windows x86_64
-          - os: windows-latest
-            arch: x86_64
+          - os: windows-2022
             compiler: msvc
 
     steps:
@@ -45,58 +31,47 @@ jobs:
       - name: Install dependencies (Linux)
         if: runner.os == 'Linux'
         run: |
-          sudo apt-get update
-          sudo apt-get install -y cmake gcc clang
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq gcc clang
 
-      - name: Install dependencies (macOS)
-        if: runner.os == 'macOS'
+      - name: Build and Test (Unix)
+        if: runner.os != 'Windows'
         run: |
-          brew install cmake
+          make clean
+          make all CC=${{ matrix.compiler }}
 
-      - name: Install dependencies (Windows)
+      - name: Benchmarks (Unix)
+        if: runner.os != 'Windows'
+        run: make bench
+
+      - name: Build and Test (Windows)
         if: runner.os == 'Windows'
         run: |
-          choco install cmake --installargs 'ADD_CMAKE_TO_PATH=System'
+          call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
+          cl /W3 /O2 /Iinclude /c src\scalar\kernels.c /Foscalar_kernels.o
+          cl /W3 /O2 /Iinclude /c src\dispatch.c /Fodispatch.o
+          cl /W3 /O2 /Iinclude /msse2 /c src\x86\sse2.c /Fox86\sse2.o
+          cl /W3 /O2 /Iinclude /arch:AVX2 /c src\x86\avx2.c /Fox86\avx2.o
+          lib /OUT:libvek.a scalar_kernels.o dispatch.o x86\sse2.o x86\avx2.o
+          cl /W3 /O2 /Iinclude tests\test_kernels.c /Fetest_kernels.exe /link libvek.a
+          cl /W3 /O2 /Iinclude tests\test_backends.c /Fetest_backends.exe /link libvek.a
+          test_kernels.exe
+          test_backends.exe
+        shell: cmd
 
-      - name: Configure CMake
-        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_RPATH_USE_LINK_PATH=ON -DCMAKE_BUILD_RPATH=./lib
-
-      - name: Build
-        run: cmake --build build --config Release --parallel
-
-      - name: Test
+      - name: Benchmarks (Windows)
+        if: runner.os == 'Windows'
         run: |
-          cd build
-          if [ "$RUNNER_OS" = "Windows" ]; then
-            ./bin/test_kernels.exe
-            ./bin/test_backends.exe
-          elif [ "$RUNNER_OS" = "macOS" ]; then
-            DYLD_LIBRARY_PATH=./lib ./bin/test_kernels
-            DYLD_LIBRARY_PATH=./lib ./bin/test_backends
-          else
-            LD_LIBRARY_PATH=./lib ./bin/test_kernels
-            LD_LIBRARY_PATH=./lib ./bin/test_backends
-          fi
-        shell: bash
+          call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
+          cl /W3 /O2 /Iinclude bench\bench_kernels.c /Febench_kernels.exe /link libvek.a
+          bench_kernels.exe 5000
+        shell: cmd
 
-      - name: Run benchmarks
-        run: |
-          cd build
-          if [ "$RUNNER_OS" = "Windows" ]; then
-            ./bin/bench_kernels.exe 5000
-          elif [ "$RUNNER_OS" = "macOS" ]; then
-            DYLD_LIBRARY_PATH=./lib ./bin/bench_kernels 5000
-          else
-            LD_LIBRARY_PATH=./lib ./bin/bench_kernels 5000
-          fi
-        shell: bash
-
-  # Release job: create release assets on tag push
   release:
     name: Release
     if: startsWith(github.ref, 'refs/tags/v')
     needs: build-test
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     permissions:
       contents: write
     steps:
@@ -105,9 +80,9 @@ jobs:
 
       - name: Build release artifacts
         run: |
-          cmake -B build -DCMAKE_BUILD_TYPE=Release
-          cmake --build build --config Release --parallel
-          cmake --install build --prefix ./install
+          make clean
+          make lib
+          make install DESTDIR=./install PREFIX=/usr/local
 
       - name: Create tarball
         run: |

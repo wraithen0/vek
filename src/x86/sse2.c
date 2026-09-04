@@ -292,8 +292,8 @@ uint32_t vek_l2sq_u8_sse2(const uint8_t *a, const uint8_t *b, size_t n)
 
     /* Tail */
     for (; i < n; i++) {
-        uint32_t diff = a[i] - b[i];
-        sum_scalar += diff * diff;
+        int32_t diff = (int32_t)a[i] - (int32_t)b[i];
+        sum_scalar += (uint32_t)(diff * diff);
     }
 
     return sum_scalar;

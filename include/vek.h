@@ -66,6 +66,26 @@ extern "C" {
 #endif
 
 /* ======================================================================== */
+/* Type Definitions                                                          */
+/* ======================================================================== */
+
+/**
+ * @brief IEEE 754 half-precision float (16-bit storage).
+ *
+ * 5 exponent bits, 10 mantissa bits. Range: ±65504.
+ * Use vek_f16_from_float() / vek_f16_to_float() for conversion.
+ */
+typedef uint16_t vek_f16;
+
+/**
+ * @brief Brain Float16 (bfloat16, 16-bit storage).
+ *
+ * 8 exponent bits, 7 mantissa bits. Same range as f32.
+ * Use vek_bf16_from_float() / vek_bf16_to_float() for conversion.
+ */
+typedef uint16_t vek_bf16;
+
+/* ======================================================================== */
 /* Initialization and Backend Info                                           */
 /* ======================================================================== */
 
@@ -191,6 +211,120 @@ float vek_l2sq_f32(const float *a, const float *b, size_t n);
 float vek_cosine_f32(const float *a, const float *b, size_t n);
 
 /** @} */ /* end of f32 group */
+
+/* ======================================================================== */
+/* f16 (IEEE 754 Half-Precision) Operations                                 */
+/* ======================================================================== */
+
+/**
+ * @name f16 Vector Operations
+ * @{
+ *
+ * Half-precision (16-bit) float operations. Inputs are stored as vek_f16 (uint16_t),
+ * converted to f32 internally for computation. Results are returned as f32.
+ */
+
+/**
+ * @brief Dot product of two f16 vectors.
+ * @param[in] a First input vector (f16 values).
+ * @param[in] b Second input vector (f16 values).
+ * @param[in] n Number of elements.
+ * @return The dot product as f32.
+ */
+float vek_dot_f16(const vek_f16 *a, const vek_f16 *b, size_t n);
+
+/**
+ * @brief Squared L2 distance between two f16 vectors.
+ * @param[in] a First input vector (f16 values).
+ * @param[in] b Second input vector (f16 values).
+ * @param[in] n Number of elements.
+ * @return The squared L2 distance as f32.
+ */
+float vek_l2sq_f16(const vek_f16 *a, const vek_f16 *b, size_t n);
+
+/**
+ * @brief Cosine similarity between two f16 vectors.
+ * @param[in] a First input vector (f16 values).
+ * @param[in] b Second input vector (f16 values).
+ * @param[in] n Number of elements.
+ * @return Cosine similarity as f32 in [-1.0, 1.0].
+ */
+float vek_cosine_f16(const vek_f16 *a, const vek_f16 *b, size_t n);
+
+/** @} */ /* end of f16 group */
+
+/* ======================================================================== */
+/* bf16 (Brain Float16) Operations                                           */
+/* ======================================================================== */
+
+/**
+ * @name bf16 Vector Operations
+ * @{
+ *
+ * BFloat16 (16-bit) operations. Inputs are stored as vek_bf16 (uint16_t),
+ * converted to f32 internally for computation. Results are returned as f32.
+ */
+
+/**
+ * @brief Dot product of two bf16 vectors.
+ * @param[in] a First input vector (bf16 values).
+ * @param[in] b Second input vector (bf16 values).
+ * @param[in] n Number of elements.
+ * @return The dot product as f32.
+ */
+float vek_dot_bf16(const vek_bf16 *a, const vek_bf16 *b, size_t n);
+
+/**
+ * @brief Squared L2 distance between two bf16 vectors.
+ * @param[in] a First input vector (bf16 values).
+ * @param[in] b Second input vector (bf16 values).
+ * @param[in] n Number of elements.
+ * @return The squared L2 distance as f32.
+ */
+float vek_l2sq_bf16(const vek_bf16 *a, const vek_bf16 *b, size_t n);
+
+/**
+ * @brief Cosine similarity between two bf16 vectors.
+ * @param[in] a First input vector (bf16 values).
+ * @param[in] b Second input vector (bf16 values).
+ * @param[in] n Number of elements.
+ * @return Cosine similarity as f32 in [-1.0, 1.0].
+ */
+float vek_cosine_bf16(const vek_bf16 *a, const vek_bf16 *b, size_t n);
+
+/** @} */ /* end of bf16 group */
+
+/* ======================================================================== */
+/* f16/bf16 Conversion Helpers                                               */
+/* ======================================================================== */
+
+/**
+ * @brief Convert f32 to f16 (IEEE 754 half-precision).
+ * @param val Input f32 value.
+ * @return f16 representation (uint16_t).
+ */
+vek_f16 vek_f16_from_float(float val);
+
+/**
+ * @brief Convert f16 to f32.
+ * @param val Input f16 value.
+ * @return f32 representation.
+ */
+float vek_f16_to_float(vek_f16 val);
+
+/**
+ * @brief Convert f32 to bf16 (Brain Float16).
+ * @param val Input f32 value.
+ * @return bf16 representation (uint16_t).
+ */
+vek_bf16 vek_bf16_from_float(float val);
+
+/**
+ * @brief Convert bf16 to f32.
+ * @param val Input bf16 value.
+ * @return f32 representation.
+ */
+float vek_bf16_to_float(vek_bf16 val);
 
 /* ======================================================================== */
 /* Quantized int8/uint8 Operations                                          */
@@ -320,10 +454,10 @@ float vek_cosine_u8(const uint8_t *a, const uint8_t *b, size_t n);
  *
  * Binary vectors are stored as arrays of @c uint64_t words. Each bit
  * represents a binary feature. The @p n parameter is the number of
- * @c uint64_t words (not bits).
+ * **bits** (not words).
  *
- * For a vector of @c B bits, use @c n = (B + 63) / 64 words.
- * Bits beyond @c B * 64 are ignored (masked to zero).
+ * Internally, this is converted to words via @c (n + 63) / 64.
+ * Bits beyond @c n in the final word are ignored (masked to zero).
  */
 
 /**
@@ -335,7 +469,7 @@ float vek_cosine_u8(const uint8_t *a, const uint8_t *b, size_t n);
  *
  * @param[in] a First binary vector (array of uint64_t words).
  * @param[in] b Second binary vector (array of uint64_t words).
- * @param[in] n Number of uint64_t words. Must be > 0.
+ * @param[in] n Number of bits. Must be > 0.
  *
  * @return Number of set bits where both vectors have 1.
  *
@@ -345,7 +479,7 @@ float vek_cosine_u8(const uint8_t *a, const uint8_t *b, size_t n);
  * @code
  * uint64_t a[] = {0xFF};  // 8 bits set
  * uint64_t b[] = {0x0F};  // 4 bits set
- * int32_t dot = vek_dot_b1(a, b, 1);  // 4
+ * int32_t dot = vek_dot_b1(a, b, 8);  // 4
  * @endcode
  */
 int32_t vek_dot_b1(const uint64_t *a, const uint64_t *b, size_t n);

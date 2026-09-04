@@ -9,25 +9,46 @@
 - **Zero dependencies** — single header + source tree, vendors cleanly into any build
 - **Stable C ABI** (`extern "C"`) — callable from C, C++, Rust, Zig, Go, Python, etc.
 - **Runtime CPU dispatch** — one binary runs on any machine, picks optimal SIMD at startup
-- **Thread-safe lazy init** — `g_dispatch` uses atomic acquire/release semantics, safe to call from any thread without explicit `vek_init()`
+- **Thread-safe lazy init** — atomic acquire/release semantics, safe to call from any thread without explicit `vek_init()`
 - **Hand-tuned intrinsics** — SSE2, AVX2, AVX-512F/VNNI/VPOPCNTDQ, NEON
+- **Numerical stability** — Neumaier compensated summation for f32 dot products prevents catastrophic cancellation
+- **Masked loads (AVX-512)** — all elements use same arithmetic path, no scalar tails
+- **Half-precision support** — f16 (IEEE 754) and bf16 (Brain Float) with automatic conversion
 - **Scalar fallback always compiled** — correctness first, SIMD only accelerates
 - **No heap allocation in hot path** — stack-only, cache-friendly
 - **Permissive licensing** — MIT OR Apache-2.0
 
 ## Supported Operations
 
+### Floating Point
+
 | Function | Type | Description | Formula |
 |---|---|---|---|
 | `vek_dot_f32` | f32 | Dot product | Σ a[i]·b[i] |
 | `vek_l2sq_f32` | f32 | Squared L2 distance | Σ (a[i] - b[i])² |
 | `vek_cosine_f32` | f32 | Cosine similarity | (a·b) / (‖a‖‖b‖) |
+| `vek_dot_f16` | f16 | Dot product (half-precision) | Σ a[i]·b[i] |
+| `vek_l2sq_f16` | f16 | Squared L2 distance (half-precision) | Σ (a[i] - b[i])² |
+| `vek_cosine_f16` | f16 | Cosine similarity (half-precision) | (a·b) / (‖a‖‖b‖) |
+| `vek_dot_bf16` | bf16 | Dot product (brain float) | Σ a[i]·b[i] |
+| `vek_l2sq_bf16` | bf16 | Squared L2 distance (brain float) | Σ (a[i] - b[i])² |
+| `vek_cosine_bf16` | bf16 | Cosine similarity (brain float) | (a·b) / (‖a‖‖b‖) |
+
+### Quantized Integer
+
+| Function | Type | Description | Formula |
+|---|---|---|---|
 | `vek_dot_i8` | int8 | Quantized dot product | Σ a[i]·b[i] |
 | `vek_dot_u8` | uint8 | Quantized dot product (unsigned) | Σ a[i]·b[i] |
 | `vek_l2sq_i8` | int8 | Quantized L2 distance | Σ (a[i] - b[i])² |
 | `vek_l2sq_u8` | uint8 | Quantized L2 distance (unsigned) | Σ (a[i] - b[i])² |
 | `vek_cosine_i8` | int8 | Quantized cosine similarity | (a·b) / (‖a‖‖b‖) |
 | `vek_cosine_u8` | uint8 | Quantized cosine sim (unsigned) | (a·b) / (‖a‖‖b‖) |
+
+### Binary (1-bit)
+
+| Function | Type | Description | Formula |
+|---|---|---|---|
 | `vek_dot_b1` | 1-bit | Binary dot product | popcnt(a & b) |
 | `vek_hamming_b1` | 1-bit | Hamming distance | popcnt(a xor b) |
 | `vek_cosine_b1` | 1-bit | Binary cosine similarity | dot / √(popcnt(a)·popcnt(b)) |
@@ -56,7 +77,24 @@ int main() {
     float cos = vek_cosine_f32(a, b, n);   // ≈ 0.997
 
     printf("Backend: %s\n", vek_backend_name());
-    // "avx2" (or "neon" / "sse2" / "scalar" / "avx512")
+    // "avx512" (or "avx2" / "neon" / "sse2" / "scalar")
+
+    return 0;
+}
+```
+
+### Half-Precision Example
+
+```c
+#include "vek.h"
+
+int main() {
+    // Convert f32 to f16 for storage
+    vek_f16 a[] = {vek_f16_from_float(1.0f), vek_f16_from_float(2.0f)};
+    vek_f16 b[] = {vek_f16_from_float(3.0f), vek_f16_from_float(4.0f)};
+
+    // Compute in f32 precision, return f32 result
+    float dot = vek_dot_f16(a, b, 2);  // 11.0
 
     return 0;
 }
@@ -73,13 +111,23 @@ make test
 
 # Microbenchmarks
 make bench
+
+# Install to /usr/local (or specify PREFIX)
+make install
+make install PREFIX=/opt/vek
 ```
 
-### CMake (optional)
+### Build Options
 
-```cmake
-add_subdirectory(vek)
-target_link_libraries(myapp PRIVATE vek)
+```bash
+# Use clang
+make CC=clang
+
+# Debug build with AddressSanitizer
+make debug
+
+# Treat warnings as errors
+make warn
 ```
 
 ### Vendoring
@@ -100,6 +148,16 @@ float vek_dot_f32(const float *a, const float *b, size_t n);
 float vek_l2sq_f32(const float *a, const float *b, size_t n);
 float vek_cosine_f32(const float *a, const float *b, size_t n);
 
+// --- f16 (IEEE 754 half-precision) ---
+float vek_dot_f16(const vek_f16 *a, const vek_f16 *b, size_t n);
+float vek_l2sq_f16(const vek_f16 *a, const vek_f16 *b, size_t n);
+float vek_cosine_f16(const vek_f16 *a, const vek_f16 *b, size_t n);
+
+// --- bf16 (Brain Float16) ---
+float vek_dot_bf16(const vek_bf16 *a, const vek_bf16 *b, size_t n);
+float vek_l2sq_bf16(const vek_bf16 *a, const vek_bf16 *b, size_t n);
+float vek_cosine_bf16(const vek_bf16 *a, const vek_bf16 *b, size_t n);
+
 // --- int8/uint8 (quantized) ---
 int32_t  vek_dot_i8(const int8_t *a, const int8_t *b, size_t n);
 uint32_t vek_dot_u8(const uint8_t *a, const uint8_t *b, size_t n);
@@ -107,16 +165,39 @@ int32_t  vek_l2sq_i8(const int8_t *a, const int8_t *b, size_t n);
 uint32_t vek_l2sq_u8(const uint8_t *a, const uint8_t *b, size_t n);
 float    vek_cosine_i8(const int8_t *a, const int8_t *b, size_t n);
 float    vek_cosine_u8(const uint8_t *a, const uint8_t *b, size_t n);
-```
 
-> **Note:** int8/uint8 dot products return 32-bit. For max-magnitude inputs (all 127 or all 255), the dot overflows the return type at ~133K int8 or ~66K uint8 elements. Cosine remains correct for uint8 at any n. For int8 cosine, overflow in the dot accumulator affects the result above the same threshold. Embedding vectors (128–4096 dims) never approach these limits.
-
-```c
 // --- 1-bit (binary) ---
 int32_t vek_dot_b1(const uint64_t *a, const uint64_t *b, size_t n);
 int32_t vek_hamming_b1(const uint64_t *a, const uint64_t *b, size_t n);
 float   vek_cosine_b1(const uint64_t *a, const uint64_t *b, size_t n);
+
+// --- Conversion helpers ---
+vek_f16  vek_f16_from_float(float val);
+float    vek_f16_to_float(vek_f16 val);
+vek_bf16 vek_bf16_from_float(float val);
+float    vek_bf16_to_float(vek_bf16 val);
 ```
+
+### Numerical Stability
+
+- **f32 dot product**: Uses Neumaier compensated summation to prevent catastrophic cancellation on long vectors
+- **INF/NaN handling**: Falls back to naive addition when INF/NaN is detected to preserve IEEE 754 semantics
+- **f16/bf16**: Converted to f32 for computation, results returned as f32
+
+### Overflow Limits
+
+| Type | Max n (all 127/255) | Max n (typical embeddings) |
+|------|---------------------|---------------------------|
+| int8 dot | ~133K elements | unlimited (128–4096 dims) |
+| uint8 dot | ~66K elements | unlimited |
+| int8 l2sq | ~266K elements | unlimited |
+| uint8 l2sq | ~133K elements | unlimited |
+
+> **Note:** Embedding vectors (128–4096 dims) never approach these limits.
+
+### Binary Kernel Note
+
+For binary kernels, `n` is the number of **bits** (not words). Internally, this is converted to words via `(n + 63) / 64`. Bits beyond `n` in the final word are masked to zero.
 
 ## Rust FFI
 
@@ -145,7 +226,7 @@ extern "C" {
 
 No crate dependency — just link `libvek.a` / `libvek.so` / `vek.dll`.
 
-## Benchmarks (Intel i5-1135G7 @ 2.4 GHz, AVX-512)
+## Benchmarks
 
 Run on your hardware:
 
@@ -155,138 +236,58 @@ make bench
 ./bench_kernels 10000
 ```
 
-### Python C Extension
+### Sample Results (Intel i5-1135G7 @ 2.4 GHz, AVX-512)
 
-For Python, vek provides a native C extension that eliminates ctypes overhead:
+| Size | Dot (ns) | L2 (ns) | Cosine (ns) | GFLOP/s (dot) |
+|------|----------|---------|-------------|---------------|
+| 128 | 11.0 | 12.2 | 24.9 | 23.2 |
+| 1024 | 44.2 | 51.7 | 70.2 | 46.3 |
+| 8192 | 398.8 | 505.2 | 415.8 | 41.1 |
+
+### Scalar vs SIMD Speedup (n=1024)
+
+| Kernel | Speedup |
+|--------|---------|
+| Dot | 21.97x |
+| L2 | 17.76x |
+| Cosine | 13.53x |
+
+## Testing
 
 ```bash
-pip install -e .
+# Run all tests
+make test
+
+# Test count: 1508 tests across all backends
+# - Basic correctness (zero, identical, orthogonal, opposite vectors)
+# - Random vector tests
+# - Edge cases (n=0, n=1, INF, NaN)
+# - Determinism and symmetry
+# - Per-backend validation (scalar, SSE2, AVX2, AVX-512, NEON)
 ```
 
-```python
-import numpy as np
-import _vek_cext as vek
+## Platform Support
 
-a = np.random.randn(1024).astype(np.float32)
-b = np.random.randn(1024).astype(np.float32)
-
-dot = vek.dot_f32(a, b)
-l2   = vek.l2sq_f32(a, b)
-cos  = vek.cosine_f32(a, b)
-```
-
-The C extension is 2x faster than ctypes and competitive with simsimd:
-
-| Library | Dot (n=8192) | L2 (n=8192) | Cosine (n=8192) |
-|---------|-------------|-------------|-----------------|
-| **vek (C ext)** | **1175 ns** | **3539 ns** | **4052 ns** |
-| simsimd | 1477 ns | 4606 ns | 5011 ns |
-| usearch | 3044 ns | 9883 ns | 10109 ns |
-| faiss | 6368 ns | 20899 ns | 18618 ns |
-
-### Cross-Library Comparison (f32, ns/iter)
-
-| Size | **Dot** vek | faiss | usearch | simsimd | **L2** vek | faiss | usearch | simsimd | **Cosine** vek | faiss | usearch | simsimd |
-| ---- | ----------- | ----- | ------- | ------- | ---------- | ----- | ------- | ------- | -------------- | ----- | ------- | ------- |
-| 32   | **189**     | 5691  | 1399    | 385     | **200**    | 5708  | 1391    | 444     | **608**        | 15924 | 3620    | 1151    |
-| 64   | **219**     | 6043  | 1417    | 345     | **191**    | 5853  | 1337    | 519     | **486**        | 17648 | 4031    | 1223    |
-| 128  | **221**     | 5892  | 1544    | 324     | **307**    | 10555 | 3150    | 1035    | **537**        | 15836 | 3595    | 1368    |
-| 256  | **250**     | 5578  | 1366    | 340     | **427**    | 14445 | 3280    | 1123    | **760**        | 15822 | 3757    | 1269    |
-| 512  | **189**     | 5958  | 1543    | 351     | **520**    | 15020 | 3989    | 1651    | **577**        | 16672 | 3844    | 1196    |
-| 1024 | **218**     | 5665  | 1506    | 386     | **849**    | 16430 | 4509    | 1260    | **733**        | 16881 | 4622    | 1491    |
-| 2048 | **285**     | 5987  | 1705    | 504     | **750**    | 16879 | 5115    | 2002    | **1056**       | 16408 | 5041    | 2108    |
-| 4096 | **465**     | 6363  | 2397    | 688     | **1052**   | 16844 | 6555    | 3183    | **1205**       | 18923 | 6695    | 2796    |
-| 8192 | **1175**    | 6368  | 3044    | 1477    | **3539**   | 20899 | 9883    | 4606    | **4052**       | 18618 | 10109   | 5011    |
-
-**Notes (ns/iter, lower is better, **bold** = fastest):**
-- vek uses the Python C extension for zero-overhead calls
-- vek is fastest on dot/L2 at small sizes; simsimd edges ahead at 4096+ on L2/cosine
-- Benchmarks run with AVX-512F/VNNI/VPOPCNTDQ enabled
-
-## API Stability
-
-vek follows [Semantic Versioning](https://semver.org/):
-
-- **v1.0** — Stable API. All public functions in `include/vek.h` are guaranteed backward-compatible.
-- **Patch releases** (1.0.x) — Bug fixes only, no API changes.
-- **Minor releases** (1.x.0) — New functions may be added, existing ones unchanged.
-- **Major releases** (x.0.0) — Breaking changes (deprecated functions removed).
-
-### What's Stable (v1.0)
-
-| Category | Functions | Status |
-|----------|-----------|--------|
-| Initialization | `vek_init`, `vek_backend_name` | Stable |
-| f32 operations | `vek_dot_f32`, `vek_l2sq_f32`, `vek_cosine_f32` | Stable |
-| int8 operations | `vek_dot_i8`, `vek_l2sq_i8`, `vek_cosine_i8` | Stable |
-| uint8 operations | `vek_dot_u8`, `vek_l2sq_u8`, `vek_cosine_u8` | Stable |
-| Binary (1-bit) | `vek_dot_b1`, `vek_hamming_b1`, `vek_cosine_b1` | Stable |
-
-### What's Unstable (may change)
-
-| Category | Functions | Status |
-|----------|-----------|--------|
-| Scalar references | `vek_*_scalar` | Internal/testing only |
-| Backend detection | `vek_backend_name` return values | May add new backends |
-
-### ABI Stability
-
-- **C ABI** — All public functions use `extern "C"` linkage.
-- **No opaque types** — Only scalar parameters and pointers.
-- **Thread-safe** — No global mutable state after initialization.
-- **No heap allocation** — All computation is stack-based.
+| Platform | Status | CI |
+|----------|--------|-----|
+| Linux x86_64 | ✅ | Ubuntu 22.04 (GCC, Clang) |
+| macOS x86_64 | ✅ | macOS 14 (Clang) |
+| macOS ARM64 | ✅ | macOS 14 (Clang) |
+| Windows x86_64 | ✅ | Windows 2022 (MSVC) |
 
 ## Roadmap
 
 - [x] v0.1 — Scalar reference + tests + dot/L2/cosine f32
 - [x] v0.2 — AVX2 intrinsics, dispatch table, benchmarks
 - [x] v0.3 — NEON intrinsics
-- [x] v0.4 — AVX-512F intrinsics, per-file SSE2/AVX2/AVX-512 flags, FMA3 CPUID check
-- [x] v0.5 — int8/uint8 quantized kernels (scalar, SSE2, AVX2, AVX-512 VNNI, NEON)
-- [x] v0.6 — Binary (1-bit) kernels (dot, Hamming, cosine) with AVX-512 VPOPCNTDQ
-- [x] v0.7 — CMake support, Doxygen, examples, benchmark comparisons
-- [x] v0.8 — Thread-safe atomic init, NEON b1 ops, b1 padding-bit masking, GCC 15 compat
-- [x] v1.0 — Stable API, published benchmarks, full docs, man pages
-- [ ] v1.1 — Package manager support (PyPI, crates.io, npm)
-
-## Documentation
-
-### API Reference
-
-Full Doxygen documentation is available in `include/vek.h`. Generate HTML docs:
-
-```bash
-doxygen Doxyfile
-# Output in docs/html/index.html
-```
-
-### Man Pages
-
-Man pages are installed in `man/man3/`. View with:
-
-```bash
-man -l man/man3/vek_dot_f32.3
-```
-
-Or install system-wide:
-
-```bash
-make install-man
-```
-
-### Python API
-
-```python
-import numpy as np
-import _vek_cext as vek
-
-a = np.random.randn(1024).astype(np.float32)
-b = np.random.randn(1024).astype(np.float32)
-
-dot = vek.dot_f32(a, b)
-l2   = vek.l2sq_f32(a, b)
-cos  = vek.cosine_f32(a, b)
-```
+- [x] v0.4 — AVX-512F intrinsics, per-file SIMD flags
+- [x] v0.5 — int8/uint8 quantized kernels
+- [x] v0.6 — Binary (1-bit) kernels
+- [x] v0.7 — CMake support, Doxygen, examples
+- [x] v0.8 — Thread-safe atomic init, NEON b1 ops
+- [x] v1.0 — Stable API, published benchmarks, full docs
+- [x] v1.1 — Compensated summation, AVX-512 masked loads, f16/bf16 support
+- [ ] v1.2 — Package manager support (PyPI, crates.io, npm)
 
 ## License
 

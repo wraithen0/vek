@@ -49,15 +49,12 @@ float vek_dot_f32_avx512(const float *a, const float *b, size_t n)
     sum0 = _mm512_add_ps(sum0, sum2);
     float sum_scalar = _mm512_reduce_add_ps(sum0);
 
-    /* Handle remaining elements */
-    for (; i + simd_width <= n; i += simd_width) {
-        __m512 a_vec = _mm512_loadu_ps(a + i);
-        __m512 b_vec = _mm512_loadu_ps(b + i);
+    /* Handle remaining elements with masked loads (no serial tail) */
+    if (i < n) {
+        __mmask16 mask = (n - i) >= 16 ? 0xFFFF : (1u << (n - i)) - 1;
+        __m512 a_vec = _mm512_maskz_loadu_ps(mask, a + i);
+        __m512 b_vec = _mm512_maskz_loadu_ps(mask, b + i);
         sum_scalar += _mm512_reduce_add_ps(_mm512_mul_ps(a_vec, b_vec));
-    }
-
-    for (; i < n; i++) {
-        sum_scalar += a[i] * b[i];
     }
 
     return sum_scalar;
@@ -94,14 +91,13 @@ float vek_l2sq_f32_avx512(const float *a, const float *b, size_t n)
     sum0 = _mm512_add_ps(sum0, sum2);
     float sum_scalar = _mm512_reduce_add_ps(sum0);
 
-    for (; i + simd_width <= n; i += simd_width) {
-        __m512 diff = _mm512_sub_ps(_mm512_loadu_ps(a + i), _mm512_loadu_ps(b + i));
+    /* Handle remaining elements with masked loads (no serial tail) */
+    if (i < n) {
+        __mmask16 mask = (n - i) >= 16 ? 0xFFFF : (1u << (n - i)) - 1;
+        __m512 a_vec = _mm512_maskz_loadu_ps(mask, a + i);
+        __m512 b_vec = _mm512_maskz_loadu_ps(mask, b + i);
+        __m512 diff = _mm512_sub_ps(a_vec, b_vec);
         sum_scalar += _mm512_reduce_add_ps(_mm512_mul_ps(diff, diff));
-    }
-
-    for (; i < n; i++) {
-        float diff = a[i] - b[i];
-        sum_scalar += diff * diff;
     }
 
     return sum_scalar;
@@ -154,19 +150,14 @@ float vek_cosine_f32_avx512(const float *a, const float *b, size_t n)
     float norm_a_scalar = _mm512_reduce_add_ps(na0);
     float norm_b_scalar = _mm512_reduce_add_ps(nb0);
 
-    for (; i + simd_width <= n; i += simd_width) {
-        __m512 av = _mm512_loadu_ps(a + i);
-        __m512 bv = _mm512_loadu_ps(b + i);
+    /* Handle remaining elements with masked loads (no serial tail) */
+    if (i < n) {
+        __mmask16 mask = (n - i) >= 16 ? 0xFFFF : (1u << (n - i)) - 1;
+        __m512 av = _mm512_maskz_loadu_ps(mask, a + i);
+        __m512 bv = _mm512_maskz_loadu_ps(mask, b + i);
         dot_scalar += _mm512_reduce_add_ps(_mm512_mul_ps(av, bv));
         norm_a_scalar += _mm512_reduce_add_ps(_mm512_mul_ps(av, av));
         norm_b_scalar += _mm512_reduce_add_ps(_mm512_mul_ps(bv, bv));
-    }
-
-    for (; i < n; i++) {
-        float ai = a[i], bi = b[i];
-        dot_scalar += ai * bi;
-        norm_a_scalar += ai * ai;
-        norm_b_scalar += bi * bi;
     }
 
     float denom = sqrtf(norm_a_scalar) * sqrtf(norm_b_scalar);
@@ -413,8 +404,8 @@ uint32_t vek_l2sq_u8_avx512(const uint8_t *a, const uint8_t *b, size_t n)
     uint32_t sum_scalar = (uint32_t)_mm512_reduce_add_epi32(sum_vec);
 
     for (; i < n; i++) {
-        uint32_t diff = a[i] - b[i];
-        sum_scalar += diff * diff;
+        int32_t diff = (int32_t)a[i] - (int32_t)b[i];
+        sum_scalar += (uint32_t)(diff * diff);
     }
 
     return sum_scalar;
@@ -646,16 +637,11 @@ int32_t vek_dot_b1_avx512(const uint64_t *a, const uint64_t *b, size_t n)
         __m512i and_vec = _mm512_and_epi64(a_vec, b_vec);
         __m512i popcnt = _mm512_popcnt_epi64(and_vec);
 
-        /* Horizontal sum across 8 lanes of 64-bit popcnts:
-         * - low 4 lanes (0-3) are in lower 256 bits
-         * - high 4 lanes (4-7) are in upper 256 bits
-         */
+        /* Horizontal sum across 8 lanes of 64-bit popcnts */
         __m256i popcnt_lo = _mm512_castsi512_si256(popcnt);
-        __m256i popcnt_hi = _mm512_castsi512_si256(_mm512_shuffle_i32x4(popcnt, popcnt, 0xFF));
-        __m128i popcnt32_lo = _mm256_cvtepi64_epi32(popcnt_lo);
-        __m128i popcnt32_hi = _mm256_cvtepi64_epi32(popcnt_hi);
-        __m512i popcnt32_8 = _mm512_inserti32x4(_mm512_inserti32x4(_mm512_setzero_epi32(), popcnt32_lo, 0), popcnt32_hi, 1);
-        sum_vec = _mm512_add_epi32(sum_vec, popcnt32_8);
+        __m256i popcnt_hi = _mm512_extracti64x4_epi64(popcnt, 1);
+        __m256i popcnt_sum = _mm256_add_epi64(popcnt_lo, popcnt_hi);
+        sum_vec = _mm512_add_epi32(sum_vec, _mm512_castsi128_si512(_mm256_cvtepi64_epi32(popcnt_sum)));
     }
 
     int32_t sum_scalar = _mm512_reduce_add_epi32(sum_vec);
@@ -692,16 +678,11 @@ int32_t vek_hamming_b1_avx512(const uint64_t *a, const uint64_t *b, size_t n)
         __m512i xor_vec = _mm512_xor_epi64(a_vec, b_vec);
         __m512i popcnt = _mm512_popcnt_epi64(xor_vec);
 
-        /* Horizontal sum across 8 lanes of 64-bit popcnts:
-         * - low 4 lanes (0-3) are in lower 256 bits
-         * - high 4 lanes (4-7) are in upper 256 bits
-         */
+        /* Horizontal sum across 8 lanes of 64-bit popcnts */
         __m256i popcnt_lo = _mm512_castsi512_si256(popcnt);
-        __m256i popcnt_hi = _mm512_castsi512_si256(_mm512_shuffle_i32x4(popcnt, popcnt, 0xFF));
-        __m128i popcnt32_lo = _mm256_cvtepi64_epi32(popcnt_lo);
-        __m128i popcnt32_hi = _mm256_cvtepi64_epi32(popcnt_hi);
-        __m512i popcnt32_8 = _mm512_inserti32x4(_mm512_inserti32x4(_mm512_setzero_epi32(), popcnt32_lo, 0), popcnt32_hi, 1);
-        sum_vec = _mm512_add_epi32(sum_vec, popcnt32_8);
+        __m256i popcnt_hi = _mm512_extracti64x4_epi64(popcnt, 1);
+        __m256i popcnt_sum = _mm256_add_epi64(popcnt_lo, popcnt_hi);
+        sum_vec = _mm512_add_epi32(sum_vec, _mm512_castsi128_si512(_mm256_cvtepi64_epi32(popcnt_sum)));
     }
 
     int32_t sum_scalar = _mm512_reduce_add_epi32(sum_vec);
@@ -740,29 +721,23 @@ float vek_cosine_b1_avx512(const uint64_t *a, const uint64_t *b, size_t n)
         __m512i and_vec = _mm512_and_epi64(a_vec, b_vec);
         __m512i popcnt = _mm512_popcnt_epi64(and_vec);
         __m256i popcnt_lo = _mm512_castsi512_si256(popcnt);
-        __m256i popcnt_hi = _mm512_castsi512_si256(_mm512_shuffle_i32x4(popcnt, popcnt, 0xFF));
-        __m128i popcnt32_lo = _mm256_cvtepi64_epi32(popcnt_lo);
-        __m128i popcnt32_hi = _mm256_cvtepi64_epi32(popcnt_hi);
-        __m512i popcnt32_8 = _mm512_inserti32x4(_mm512_inserti32x4(_mm512_setzero_epi32(), popcnt32_lo, 0), popcnt32_hi, 1);
-        dot_vec = _mm512_add_epi32(dot_vec, popcnt32_8);
+        __m256i popcnt_hi = _mm512_extracti64x4_epi64(popcnt, 1);
+        __m256i popcnt_sum = _mm256_add_epi64(popcnt_lo, popcnt_hi);
+        dot_vec = _mm512_add_epi32(dot_vec, _mm512_castsi128_si512(_mm256_cvtepi64_epi32(popcnt_sum)));
 
         /* norm a */
         __m512i pop_a = _mm512_popcnt_epi64(a_vec);
         __m256i pop_a_lo = _mm512_castsi512_si256(pop_a);
-        __m256i pop_a_hi = _mm512_castsi512_si256(_mm512_shuffle_i32x4(pop_a, pop_a, 0xFF));
-        __m128i pop_a32_lo = _mm256_cvtepi64_epi32(pop_a_lo);
-        __m128i pop_a32_hi = _mm256_cvtepi64_epi32(pop_a_hi);
-        __m512i pop_a32_8 = _mm512_inserti32x4(_mm512_inserti32x4(_mm512_setzero_epi32(), pop_a32_lo, 0), pop_a32_hi, 1);
-        norm_a_vec = _mm512_add_epi32(norm_a_vec, pop_a32_8);
+        __m256i pop_a_hi = _mm512_extracti64x4_epi64(pop_a, 1);
+        __m256i pop_a_sum = _mm256_add_epi64(pop_a_lo, pop_a_hi);
+        norm_a_vec = _mm512_add_epi32(norm_a_vec, _mm512_castsi128_si512(_mm256_cvtepi64_epi32(pop_a_sum)));
 
         /* norm b */
         __m512i pop_b = _mm512_popcnt_epi64(b_vec);
         __m256i pop_b_lo = _mm512_castsi512_si256(pop_b);
-        __m256i pop_b_hi = _mm512_castsi512_si256(_mm512_shuffle_i32x4(pop_b, pop_b, 0xFF));
-        __m128i pop_b32_lo = _mm256_cvtepi64_epi32(pop_b_lo);
-        __m128i pop_b32_hi = _mm256_cvtepi64_epi32(pop_b_hi);
-        __m512i pop_b32_8 = _mm512_inserti32x4(_mm512_inserti32x4(_mm512_setzero_epi32(), pop_b32_lo, 0), pop_b32_hi, 1);
-        norm_b_vec = _mm512_add_epi32(norm_b_vec, pop_b32_8);
+        __m256i pop_b_hi = _mm512_extracti64x4_epi64(pop_b, 1);
+        __m256i pop_b_sum = _mm256_add_epi64(pop_b_lo, pop_b_hi);
+        norm_b_vec = _mm512_add_epi32(norm_b_vec, _mm512_castsi128_si512(_mm256_cvtepi64_epi32(pop_b_sum)));
     }
 
     int32_t dot_scalar = _mm512_reduce_add_epi32(dot_vec);

@@ -5,17 +5,110 @@
 
 #include <stddef.h>
 #include <math.h>
+#include <string.h>
 #include "vek.h"
 #include "../internal.h"
 
-/* Scalar dot product: sum(a[i] * b[i]) */
+/* ===== f16/bf16 Conversion Helpers ===== */
+
+/* f16: 1 sign bit, 5 exponent bits (bias 15), 10 mantissa bits */
+vek_f16 vek_f16_from_float(float val)
+{
+    uint32_t bits;
+    memcpy(&bits, &val, sizeof(bits));
+    uint32_t sign = (bits >> 31) & 1;
+    int32_t exp = ((bits >> 23) & 0xFF) - 127;  /* f32 exponent */
+    uint32_t mantissa = bits & 0x7FFFFF;
+
+    vek_f16 result;
+    if (exp > 15) {
+        /* Overflow -> INF */
+        result = (vek_f16)((sign << 15) | 0x7C00);
+    } else if (exp < -14) {
+        /* Subnormal or zero */
+        if (exp < -24) {
+            result = (vek_f16)(sign << 15);  /* too small -> zero */
+        } else {
+            mantissa |= 0x800000;  /* add implicit 1 */
+            result = (vek_f16)((sign << 15) | (mantissa >> (1 - exp - 15)));
+        }
+    } else {
+        /* Normal range */
+        uint32_t f16exp = (uint32_t)((exp + 15) & 0x1F);
+        result = (vek_f16)((sign << 15) | (f16exp << 10) | (mantissa >> 13));
+    }
+    return result;
+}
+
+float vek_f16_to_float(vek_f16 val)
+{
+    uint32_t sign = (val >> 15) & 1;
+    uint32_t exp = (val >> 10) & 0x1F;
+    uint32_t mantissa = val & 0x3FF;
+    uint32_t f32bits;
+
+    if (exp == 0) {
+        if (mantissa == 0) {
+            f32bits = sign << 31;  /* zero */
+        } else {
+            /* Subnormal */
+            exp = 1;
+            while (!(mantissa & 0x400)) {
+                mantissa <<= 1;
+                exp--;
+            }
+            mantissa &= 0x3FF;
+            f32bits = (sign << 31) | ((exp + 127 - 15) << 23) | (mantissa << 13);
+        }
+    } else if (exp == 0x1F) {
+        f32bits = (sign << 31) | 0x7F800000 | (mantissa << 13);  /* INF/NaN */
+    } else {
+        f32bits = (sign << 31) | ((exp + 127 - 15) << 23) | (mantissa << 13);
+    }
+
+    float result;
+    memcpy(&result, &f32bits, sizeof(result));
+    return result;
+}
+
+/* bf16: 1 sign bit, 8 exponent bits, 7 mantissa bits (truncated f32) */
+vek_bf16 vek_bf16_from_float(float val)
+{
+    uint32_t bits;
+    memcpy(&bits, &val, sizeof(bits));
+    return (vek_bf16)(bits >> 16);  /* truncate lower 16 bits */
+}
+
+float vek_bf16_to_float(vek_bf16 val)
+{
+    uint32_t f32bits = (uint32_t)val << 16;
+    float result;
+    memcpy(&result, &f32bits, sizeof(result));
+    return result;
+}
+
+/* Scalar dot product: sum(a[i] * b[i]) with Neumaier compensated summation.
+ * Falls back to naive summation for INF/NaN inputs to preserve IEEE 754 semantics. */
 float vek_dot_f32_scalar(const float *a, const float *b, size_t n)
 {
     float sum = 0.0f;
+    float comp = 0.0f;  /* compensation for lost low-order bits */
     for (size_t i = 0; i < n; i++) {
-        sum += a[i] * b[i];
+        float prod = a[i] * b[i];
+        /* Once sum becomes INF/NaN, compensation arithmetic breaks down.
+         * Fall back to naive addition to preserve IEEE 754 semantics. */
+        if (!isfinite(sum) || !isfinite(prod)) {
+            sum += prod;
+            continue;
+        }
+        float t = sum + prod;
+        if (fabsf(sum) >= fabsf(prod))
+            comp += (sum - t) + prod;
+        else
+            comp += (prod - t) + sum;
+        sum = t;
     }
-    return sum;
+    return sum + comp;
 }
 
 /* Scalar squared L2 distance: sum((a[i] - b[i])^2) */
@@ -183,4 +276,96 @@ float vek_cosine_b1_scalar(const uint64_t *a, const uint64_t *b, size_t n)
     }
     if (norm_a == 0 || norm_b == 0) return 0.0f;
     return (float)dot / (sqrtf((float)norm_a) * sqrtf((float)norm_b));
+}
+
+/* ===== f16 Scalar Kernels (convert to f32, then use f32 kernels) ===== */
+
+float vek_dot_f16_scalar(const vek_f16 *a, const vek_f16 *b, size_t n)
+{
+    float sum = 0.0f;
+    float comp = 0.0f;
+    for (size_t i = 0; i < n; i++) {
+        float prod = vek_f16_to_float(a[i]) * vek_f16_to_float(b[i]);
+        if (!isfinite(sum) || !isfinite(prod)) {
+            sum += prod;
+            continue;
+        }
+        float t = sum + prod;
+        if (fabsf(sum) >= fabsf(prod))
+            comp += (sum - t) + prod;
+        else
+            comp += (prod - t) + sum;
+        sum = t;
+    }
+    return sum + comp;
+}
+
+float vek_l2sq_f16_scalar(const vek_f16 *a, const vek_f16 *b, size_t n)
+{
+    float sum = 0.0f;
+    for (size_t i = 0; i < n; i++) {
+        float diff = vek_f16_to_float(a[i]) - vek_f16_to_float(b[i]);
+        sum += diff * diff;
+    }
+    return sum;
+}
+
+float vek_cosine_f16_scalar(const vek_f16 *a, const vek_f16 *b, size_t n)
+{
+    float dot = 0.0f, norm_a = 0.0f, norm_b = 0.0f;
+    for (size_t i = 0; i < n; i++) {
+        float ai = vek_f16_to_float(a[i]);
+        float bi = vek_f16_to_float(b[i]);
+        dot += ai * bi;
+        norm_a += ai * ai;
+        norm_b += bi * bi;
+    }
+    if (norm_a == 0.0f || norm_b == 0.0f) return 0.0f;
+    return dot / (sqrtf(norm_a) * sqrtf(norm_b));
+}
+
+/* ===== bf16 Scalar Kernels (convert to f32, then use f32 kernels) ===== */
+
+float vek_dot_bf16_scalar(const vek_bf16 *a, const vek_bf16 *b, size_t n)
+{
+    float sum = 0.0f;
+    float comp = 0.0f;
+    for (size_t i = 0; i < n; i++) {
+        float prod = vek_bf16_to_float(a[i]) * vek_bf16_to_float(b[i]);
+        if (!isfinite(sum) || !isfinite(prod)) {
+            sum += prod;
+            continue;
+        }
+        float t = sum + prod;
+        if (fabsf(sum) >= fabsf(prod))
+            comp += (sum - t) + prod;
+        else
+            comp += (prod - t) + sum;
+        sum = t;
+    }
+    return sum + comp;
+}
+
+float vek_l2sq_bf16_scalar(const vek_bf16 *a, const vek_bf16 *b, size_t n)
+{
+    float sum = 0.0f;
+    for (size_t i = 0; i < n; i++) {
+        float diff = vek_bf16_to_float(a[i]) - vek_bf16_to_float(b[i]);
+        sum += diff * diff;
+    }
+    return sum;
+}
+
+float vek_cosine_bf16_scalar(const vek_bf16 *a, const vek_bf16 *b, size_t n)
+{
+    float dot = 0.0f, norm_a = 0.0f, norm_b = 0.0f;
+    for (size_t i = 0; i < n; i++) {
+        float ai = vek_bf16_to_float(a[i]);
+        float bi = vek_bf16_to_float(b[i]);
+        dot += ai * bi;
+        norm_a += ai * ai;
+        norm_b += bi * bi;
+    }
+    if (norm_a == 0.0f || norm_b == 0.0f) return 0.0f;
+    return dot / (sqrtf(norm_a) * sqrtf(norm_b));
 }

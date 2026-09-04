@@ -1,0 +1,10 @@
+prefix=@PREFIX@
+exec_prefix=${prefix}
+libdir=${exec_prefix}/lib
+includedir=${prefix}/include
+
+Name: vek
+Description: Vector Engine Kernels - SIMD vector similarity
+Version: 1.0.0
+Libs: -L${libdir} -lvek -lm -lpthread
+Cflags: -I${includedir}

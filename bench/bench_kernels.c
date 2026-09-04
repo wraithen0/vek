@@ -24,6 +24,23 @@ static inline uint64_t ns_now(void)
     return (uint64_t)ts.tv_sec * 1000000000ULL + (uint64_t)ts.tv_nsec;
 }
 
+/* Read CPU frequency from /proc/cpuinfo for accurate cycle estimation */
+static double cpu_freq_ghz(void)
+{
+    FILE *f = fopen("/proc/cpuinfo", "r");
+    if (!f) return 0.0;
+    char line[256];
+    double freq = 0.0;
+    while (fgets(line, sizeof(line), f)) {
+        if (sscanf(line, "cpu mhz : %lf", &freq) == 1) {
+            freq /= 1000.0; /* convert MHz to GHz */
+            break;
+        }
+    }
+    fclose(f);
+    return freq > 0.0 ? freq : 3.0; /* fallback to 3 GHz if unavailable */
+}
+
 /* Scalar reference implementations for comparison */
 static float scalar_dot_f32(const float *a, const float *b, size_t n)
 {
@@ -92,14 +109,15 @@ static uint32_t scalar_l2sq_u8(const uint8_t *a, const uint8_t *b, size_t n)
     return sum;
 }
 
+/* Scalar cosine references for validation (used in bench_scalar_vs_simd) */
 static float scalar_cosine_i8(const int8_t *a, const int8_t *b, size_t n)
 {
-    int32_t dot = 0, na = 0, nb = 0;
+    int64_t dot = 0, na = 0, nb = 0;
     for (size_t i = 0; i < n; i++) {
         int32_t ai = a[i], bi = b[i];
-        dot += ai * bi;
-        na += ai * ai;
-        nb += bi * bi;
+        dot += (int64_t)ai * bi;
+        na += (int64_t)ai * ai;
+        nb += (int64_t)bi * bi;
     }
     if (na == 0 || nb == 0) return 0.0f;
     return (float)dot / (sqrtf((float)na) * sqrtf((float)nb));
@@ -107,12 +125,12 @@ static float scalar_cosine_i8(const int8_t *a, const int8_t *b, size_t n)
 
 static float scalar_cosine_u8(const uint8_t *a, const uint8_t *b, size_t n)
 {
-    uint32_t dot = 0, na = 0, nb = 0;
+    uint64_t dot = 0, na = 0, nb = 0;
     for (size_t i = 0; i < n; i++) {
         uint32_t ai = a[i], bi = b[i];
-        dot += ai * bi;
-        na += ai * ai;
-        nb += bi * bi;
+        dot += (uint64_t)ai * bi;
+        na += (uint64_t)ai * ai;
+        nb += (uint64_t)bi * bi;
     }
     if (na == 0 || nb == 0) return 0.0f;
     return (float)dot / (sqrtf((float)na) * sqrtf((float)nb));
@@ -122,15 +140,15 @@ static float scalar_cosine_u8(const uint8_t *a, const uint8_t *b, size_t n)
 static void bench_kernel(const char *name,
                          float (*fn)(const float*, const float*, size_t),
                          const float *a, const float *b, size_t n,
-                         int iters)
+                         int iters, double freq_ghz)
 {
-    /* Warmup */
-    float result = 0;
+    /* Warmup (discard result) */
     for (int i = 0; i < WARMUP_ITERS; i++) {
-        result += fn(a, b, n);
+        fn(a, b, n);
     }
 
     /* Benchmark */
+    volatile float result = 0; /* prevent optimization */
     uint64_t start = ns_now();
     for (int i = 0; i < iters; i++) {
         result += fn(a, b, n);
@@ -138,24 +156,22 @@ static void bench_kernel(const char *name,
     uint64_t end = ns_now();
 
     double ns_per_iter = (double)(end - start) / iters;
-    double cycles_per_iter = ns_per_iter * 3.0; /* Assume ~3 GHz */
+    double cycles_per_iter = ns_per_iter * freq_ghz;
     double gflops = (2.0 * n) / (ns_per_iter / 1e9) / 1e9; /* 2 FLOPs per element for dot */
 
     printf("  %-20s %10.2f ns/iter  %8.2f cycles  %8.2f GFLOP/s  (result=%.6f)\n",
-           name, ns_per_iter, cycles_per_iter, gflops, result / iters);
+           name, ns_per_iter, cycles_per_iter, gflops, (float)result / iters);
 }
 
 /* Benchmark int8 functions */
 static void bench_kernel_i8(const char *name,
                             int32_t (*fn)(const int8_t*, const int8_t*, size_t),
                             const int8_t *a, const int8_t *b, size_t n,
-                            int iters)
+                            int iters, double freq_ghz)
 {
-    int32_t result = 0;
-    for (int i = 0; i < WARMUP_ITERS; i++) {
-        result += fn(a, b, n);
-    }
+    for (int i = 0; i < WARMUP_ITERS; i++) fn(a, b, n);
 
+    volatile int32_t result = 0;
     uint64_t start = ns_now();
     for (int i = 0; i < iters; i++) {
         result += fn(a, b, n);
@@ -163,23 +179,21 @@ static void bench_kernel_i8(const char *name,
     uint64_t end = ns_now();
 
     double ns_per_iter = (double)(end - start) / iters;
-    double cycles_per_iter = ns_per_iter * 3.0;
+    double cycles_per_iter = ns_per_iter * freq_ghz;
     double gops = (2.0 * n) / (ns_per_iter / 1e9) / 1e9;
 
     printf("  %-20s %10.2f ns/iter  %8.2f cycles  %8.2f GOPS/s  (result=%d)\n",
-           name, ns_per_iter, cycles_per_iter, gops, result / iters);
+           name, ns_per_iter, cycles_per_iter, gops, (int32_t)result / iters);
 }
 
 static void bench_kernel_u8(const char *name,
                             uint32_t (*fn)(const uint8_t*, const uint8_t*, size_t),
                             const uint8_t *a, const uint8_t *b, size_t n,
-                            int iters)
+                            int iters, double freq_ghz)
 {
-    uint32_t result = 0;
-    for (int i = 0; i < WARMUP_ITERS; i++) {
-        result += fn(a, b, n);
-    }
+    for (int i = 0; i < WARMUP_ITERS; i++) fn(a, b, n);
 
+    volatile uint32_t result = 0;
     uint64_t start = ns_now();
     for (int i = 0; i < iters; i++) {
         result += fn(a, b, n);
@@ -187,23 +201,21 @@ static void bench_kernel_u8(const char *name,
     uint64_t end = ns_now();
 
     double ns_per_iter = (double)(end - start) / iters;
-    double cycles_per_iter = ns_per_iter * 3.0;
+    double cycles_per_iter = ns_per_iter * freq_ghz;
     double gops = (2.0 * n) / (ns_per_iter / 1e9) / 1e9;
 
     printf("  %-20s %10.2f ns/iter  %8.2f cycles  %8.2f GOPS/s  (result=%u)\n",
-           name, ns_per_iter, cycles_per_iter, gops, result / iters);
+           name, ns_per_iter, cycles_per_iter, gops, (uint32_t)result / iters);
 }
 
 static void bench_kernel_cos_i8(const char *name,
                                 float (*fn)(const int8_t*, const int8_t*, size_t),
                                 const int8_t *a, const int8_t *b, size_t n,
-                                int iters)
+                                int iters, double freq_ghz)
 {
-    float result = 0;
-    for (int i = 0; i < WARMUP_ITERS; i++) {
-        result += fn(a, b, n);
-    }
+    for (int i = 0; i < WARMUP_ITERS; i++) fn(a, b, n);
 
+    volatile float result = 0;
     uint64_t start = ns_now();
     for (int i = 0; i < iters; i++) {
         result += fn(a, b, n);
@@ -211,22 +223,20 @@ static void bench_kernel_cos_i8(const char *name,
     uint64_t end = ns_now();
 
     double ns_per_iter = (double)(end - start) / iters;
-    double cycles_per_iter = ns_per_iter * 3.0;
+    double cycles_per_iter = ns_per_iter * freq_ghz;
 
     printf("  %-20s %10.2f ns/iter  %8.2f cycles  (result=%.6f)\n",
-           name, ns_per_iter, cycles_per_iter, result / iters);
+           name, ns_per_iter, cycles_per_iter, (float)result / iters);
 }
 
 static void bench_kernel_cos_u8(const char *name,
                                 float (*fn)(const uint8_t*, const uint8_t*, size_t),
                                 const uint8_t *a, const uint8_t *b, size_t n,
-                                int iters)
+                                int iters, double freq_ghz)
 {
-    float result = 0;
-    for (int i = 0; i < WARMUP_ITERS; i++) {
-        result += fn(a, b, n);
-    }
+    for (int i = 0; i < WARMUP_ITERS; i++) fn(a, b, n);
 
+    volatile float result = 0;
     uint64_t start = ns_now();
     for (int i = 0; i < iters; i++) {
         result += fn(a, b, n);
@@ -234,10 +244,10 @@ static void bench_kernel_cos_u8(const char *name,
     uint64_t end = ns_now();
 
     double ns_per_iter = (double)(end - start) / iters;
-    double cycles_per_iter = ns_per_iter * 3.0;
+    double cycles_per_iter = ns_per_iter * freq_ghz;
 
     printf("  %-20s %10.2f ns/iter  %8.2f cycles  (result=%.6f)\n",
-           name, ns_per_iter, cycles_per_iter, result / iters);
+           name, ns_per_iter, cycles_per_iter, (float)result / iters);
 }
 
 /* Compare scalar vs SIMD for a given f32 kernel */
@@ -380,7 +390,7 @@ static void bench_scalar_vs_simd_quantized(size_t n, int iters)
 }
 
 /* Benchmark all f32 kernels for a given vector size */
-static void bench_size(size_t n, int iters)
+static void bench_size(size_t n, int iters, double freq_ghz)
 {
     printf("\n=== Vector size: %zu ===\n", n);
 
@@ -395,16 +405,16 @@ static void bench_size(size_t n, int iters)
     printf("  %-20s %10s  %8s  %8s  %s\n", "Kernel", "ns/iter", "cycles", "GFLOP/s", "result");
     printf("  %-20s %10s  %8s  %8s  %s\n", "--------------------", "----------", "--------", "--------", "--------");
 
-    bench_kernel("vek_dot_f32",    vek_dot_f32,    a, b, n, iters);
-    bench_kernel("vek_l2sq_f32",   vek_l2sq_f32,   a, b, n, iters);
-    bench_kernel("vek_cosine_f32", vek_cosine_f32, a, b, n, iters);
+    bench_kernel("vek_dot_f32",    vek_dot_f32,    a, b, n, iters, freq_ghz);
+    bench_kernel("vek_l2sq_f32",   vek_l2sq_f32,   a, b, n, iters, freq_ghz);
+    bench_kernel("vek_cosine_f32", vek_cosine_f32, a, b, n, iters, freq_ghz);
 
     free(a);
     free(b);
 }
 
 /* Benchmark quantized kernels for a given vector size */
-static void bench_size_quantized(size_t n, int iters)
+static void bench_size_quantized(size_t n, int iters, double freq_ghz)
 {
     printf("\n=== Quantized kernels (n=%zu) ===\n", n);
 
@@ -423,12 +433,12 @@ static void bench_size_quantized(size_t n, int iters)
     printf("  %-20s %10s  %8s  %8s  %s\n", "Kernel", "ns/iter", "cycles", "GOPS/s", "result");
     printf("  %-20s %10s  %8s  %8s  %s\n", "--------------------", "----------", "--------", "--------", "--------");
 
-    bench_kernel_i8("vek_dot_i8",     vek_dot_i8,     a_i8, b_i8, n, iters);
-    bench_kernel_i8("vek_l2sq_i8",    vek_l2sq_i8,    a_i8, b_i8, n, iters);
-    bench_kernel_u8("vek_dot_u8",     vek_dot_u8,     a_u8, b_u8, n, iters);
-    bench_kernel_u8("vek_l2sq_u8",    vek_l2sq_u8,    a_u8, b_u8, n, iters);
-    bench_kernel_cos_i8("vek_cosine_i8", vek_cosine_i8, a_i8, b_i8, n, iters);
-    bench_kernel_cos_u8("vek_cosine_u8", vek_cosine_u8, a_u8, b_u8, n, iters);
+    bench_kernel_i8("vek_dot_i8",     vek_dot_i8,     a_i8, b_i8, n, iters, freq_ghz);
+    bench_kernel_i8("vek_l2sq_i8",    vek_l2sq_i8,    a_i8, b_i8, n, iters, freq_ghz);
+    bench_kernel_u8("vek_dot_u8",     vek_dot_u8,     a_u8, b_u8, n, iters, freq_ghz);
+    bench_kernel_u8("vek_l2sq_u8",    vek_l2sq_u8,    a_u8, b_u8, n, iters, freq_ghz);
+    bench_kernel_cos_i8("vek_cosine_i8", vek_cosine_i8, a_i8, b_i8, n, iters, freq_ghz);
+    bench_kernel_cos_u8("vek_cosine_u8", vek_cosine_u8, a_u8, b_u8, n, iters, freq_ghz);
 
     free(a_i8); free(b_i8); free(a_u8); free(b_u8);
 }
@@ -464,9 +474,12 @@ int main(int argc, char **argv)
         iters = atoi(argv[1]);
     }
 
+    double freq_ghz = cpu_freq_ghz();
+
     printf("vek benchmark suite\n");
     printf("Backend: %s\n", vek_backend_name());
     printf("Iterations per kernel: %d\n", iters);
+    printf("CPU frequency: %.2f GHz\n", freq_ghz);
 
     if (vek_init() != 0) {
         fprintf(stderr, "Failed to initialize vek\n");
@@ -476,24 +489,24 @@ int main(int argc, char **argv)
     printf("Active backend after init: %s\n", vek_backend_name());
 
     /* Small vectors */
-    bench_size(32, iters);
-    bench_size(64, iters);
-    bench_size(128, iters);
+    bench_size(32, iters, freq_ghz);
+    bench_size(64, iters, freq_ghz);
+    bench_size(128, iters, freq_ghz);
 
     /* Medium vectors */
-    bench_size(256, iters);
-    bench_size(512, iters);
-    bench_size(1024, iters);
+    bench_size(256, iters, freq_ghz);
+    bench_size(512, iters, freq_ghz);
+    bench_size(1024, iters, freq_ghz);
 
     /* Quantized */
-    bench_size_quantized(128, iters);
-    bench_size_quantized(1024, iters);
+    bench_size_quantized(128, iters, freq_ghz);
+    bench_size_quantized(1024, iters, freq_ghz);
 
     /* Large vectors */
-    bench_size(2048, iters / 10);
-    bench_size(4096, iters / 10);
-    bench_size(8192, iters / 10);
-    bench_size_quantized(8192, iters / 10);
+    bench_size(2048, iters / 10, freq_ghz);
+    bench_size(4096, iters / 10, freq_ghz);
+    bench_size(8192, iters / 10, freq_ghz);
+    bench_size_quantized(8192, iters / 10, freq_ghz);
 
     /* Scalar vs SIMD comparison */
     bench_scalar_vs_simd(1024, iters);
