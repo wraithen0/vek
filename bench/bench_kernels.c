@@ -12,6 +12,7 @@
 #include <math.h>
 #include <stdint.h>
 #ifdef __APPLE__
+#include <sys/types.h>
 #include <sys/sysctl.h>
 #endif
 #include "vek.h"
