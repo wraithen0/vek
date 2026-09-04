@@ -243,12 +243,16 @@ float vek_cosine_b1_neon(const uint64_t*, const uint64_t*, size_t);
 
 /* CPU feature detection */
 #if defined(__x86_64__) || defined(_M_X64)
-#include <cpuid.h>
+#ifdef _MSC_VER
+#include <intrin.h>  /* For __cpuidex() */
+#else
+#include <cpuid.h>   /* For __cpuid_count() */
+#endif
 
 static void cpuid(uint32_t leaf, uint32_t subleaf,
                   uint32_t *eax, uint32_t *ebx, uint32_t *ecx, uint32_t *edx)
 {
-#if defined(_MSC_VER)
+#ifdef _MSC_VER
     int cpuInfo[4];
     __cpuidex(cpuInfo, leaf, subleaf);
     *eax = cpuInfo[0];
